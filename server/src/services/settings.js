@@ -6,6 +6,13 @@ export const DEFAULT_SETTINGS = {
     reliefThreshold: 100,
     reliefCooldownMin: 5,
   },
+  slots: {
+    minBet: 100,
+    maxBet: 5000,
+    betStep: 100,
+    jackpotRate: 0.01,
+    jackpotSeed: 50000,
+  },
 }
 
 export function getSettings(db, game) {
