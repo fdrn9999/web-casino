@@ -95,3 +95,5 @@
 - Task 1: complete (commits 996e39b..dc41607, review approved, 재실행 94/94) — 관리자 통계 API
 - Task 2: complete (commits 68a8ee9..b8c1e09, review clean, 무결점) — 마이페이지 손익 API, 96/96
 - Task 3: complete (commits ff96f7f..ce1becd, review approved, Chart 라이프사이클·데이터매핑 검증) — 통계 대시보드
+- Task 4: complete (commits 88f2049..eb1ecbe, review approved) — 마이페이지 손익직면(음수 RED 정직표시)
+  - [최종triage] Minor(반복): 여러 뷰 로딩/에러 상태 UI 없음(API 실패시 빈화면)
