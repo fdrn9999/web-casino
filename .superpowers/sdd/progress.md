@@ -53,3 +53,6 @@
 
 ## P4 (테이블·블랙잭)
 - Task 1: complete (commits 447f895..a6f215b, review clean, 무결점) — 서버 46/46
+- Task 2: complete (commits 19fc6ec..d5e3496, review approved, 독립재검증 51/51)
+  - [최종triage] Minor: fromSplit 테스트 없음(수동검증 정확), doubled 파라미터 미사용(인터페이스 규약)
+- security: 카드/슬롯 기본 RNG를 crypto CSPRNG로 (602616e) — CWE-338 대응(가상머니라 금전위험 없으나 편향제거)
