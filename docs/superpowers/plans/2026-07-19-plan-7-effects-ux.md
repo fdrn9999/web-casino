@@ -384,7 +384,9 @@ git commit -m "feat: 카드 딜 인·홀카드 플립 애니메이션"
 
 ---
 
-### Task 4: 슬롯 — 세로 릴 연출 + 잭팟 풀스크린 연출
+### Task 4: 슬롯 — 잭팟 풀스크린 연출 (세로 릴·오토스핀은 이미 구현됨)
+
+> **선행 반영됨:** 사용자 요청으로 SlotsView의 **세로 스크롤 릴 연출 + 오토 스핀**은 이미 구현·검증 완료(커밋 dadcd9c/d0b5c86/8fde452). 따라서 이 태스크에서는 릴 렌더링을 **다시 만들지 말 것**. 아래 Step 2의 "릴 세로 스트립 교체"는 건너뛰고, **JackpotCelebration 풀스크린 연출 + 당첨 FloatingText + glow**만 기존 스크롤 SlotsView에 얹는다. 기존 스핀/오토스핀/사운드/서버권위 로직은 보존.
 
 **Files:**
 - Modify: `client/src/views/SlotsView.vue`
