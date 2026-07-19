@@ -80,4 +80,5 @@
   - Plan7 Task4는 릴 재구현 스킵하도록 문서 조정(잭팟 풀스크린 연출만 남김)
 
 ## P5 (룰렛·바카라)
+- Task 2: complete (commits ef4b809..3f598c4, review clean, 무결점) — 룰렛 엔진, 78/78
 - Task 1: complete (commits 54740bd..d506e4e, review clean, 무결점) — bet:place 일반화, 73/73
