@@ -18,6 +18,7 @@
   - Minor: walletEvents 리스너 재구독 시 정리 없음(현재 1회 호출이라 무해, 최종리뷰 triage)
 - Task 7: complete (commits de979e6..ed64209, review clean, 무결점) — 미사용 hero.png 잔존(무해)
 - Task 8: complete (commits e8b6804..5f05efb, review clean, 무결점)
+- Task 9: complete (commits 0ed98c3..a11faef, review clean, 무결점) — 클라 빌드 성공
 - Task 4: complete (commits 4574c93..4876c00, review clean)
   - Minor: type enum 미검증(스코프외), rollback 비발행 테스트 없음(구조상 보장), 없는유저 bare Error
 - Task 1: complete (commits 66b6c4a..ed2e6ea, review clean) — 포트 3000→4000 재조정 포함
