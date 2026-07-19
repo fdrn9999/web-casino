@@ -4,6 +4,8 @@ import { api } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
 import { connectSocket } from '../composables/useSocket'
+import FloatingText from '../components/FloatingText.vue'
+import JackpotCelebration from '../components/JackpotCelebration.vue'
 
 const auth = useAuthStore()
 const { sfx, playJackpot } = useSound()
@@ -31,6 +33,10 @@ const spinning = ref(false)
 const result = ref(null)
 const error = ref('')
 const autoSpin = ref(false)
+const floating = ref(null)
+const celebration = ref(null)
+const glow = ref(false)
+let glowTimeout = null
 
 // --- reel visuals ---
 const reelStrips = ref([['❔'], ['❔'], ['❔']])
@@ -205,6 +211,7 @@ onUnmounted(() => {
   // stopReelsSequentially chains unwind instead of hanging forever.
   ;[...pendingWaitResolvers].forEach((settle) => settle())
   pendingWaitResolvers.clear()
+  clearTimeout(glowTimeout)
   hardStopReels()
 })
 
@@ -220,6 +227,8 @@ async function doSpin() {
   if (spinning.value) return null
   error.value = ''
   result.value = null
+  glow.value = false
+  clearTimeout(glowTimeout)
   spinning.value = true
   sfx.spinStart()
   startReelSpin()
@@ -234,9 +243,17 @@ async function doSpin() {
     if (unmounted) return null
     result.value = res
     auth.setBalance(res.balance)
-    if (res.jackpotWon) playJackpot()
-    else if (res.payout > 0) sfx.win()
-    else sfx.lose()
+    if (res.jackpotWon) {
+      playJackpot()
+      celebration.value?.celebrate(res.jackpotAmount)
+    } else if (res.payout > 0) {
+      sfx.win()
+      glow.value = true
+      floating.value?.show(`+${res.payout.toLocaleString()}칩`, 'win')
+      glowTimeout = setTimeout(() => (glow.value = false), 3000)
+    } else {
+      sfx.lose()
+    }
     spinning.value = false
     resumeAutoSpinIfNeeded()
     return res
@@ -319,7 +336,8 @@ async function autoSpinLoop() {
     <h1 class="text-xl font-bold text-amber-400">🎰 슬롯머신</h1>
 
     <div class="rounded-2xl border-4 border-amber-500/60 bg-emerald-900 p-6">
-      <div class="flex justify-center gap-3">
+      <div class="relative flex justify-center gap-3 rounded-xl" :class="glow ? 'fx-glow-win' : ''">
+        <FloatingText ref="floating" />
         <div v-for="(strip, i) in reelStrips" :key="i" :ref="(el) => setReelEl(el, i)"
           class="relative h-24 w-20 overflow-hidden rounded-xl bg-emerald-950 shadow-inner sm:h-28 sm:w-24"
           :class="{ 'ring-2 ring-amber-400/70': reelState[i] === 'spinning' || reelState[i] === 'stopping' }">
@@ -373,5 +391,7 @@ async function autoSpinLoop() {
         </li>
       </ul>
     </details>
+
+    <JackpotCelebration ref="celebration" />
   </div>
 </template>
