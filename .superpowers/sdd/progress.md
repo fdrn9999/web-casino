@@ -27,5 +27,7 @@
   - Minor: task-1-report.md의 concerns가 포트 변경 전 상태 서술(코드 아닌 리포트 staleness)
 
 ## P2 (이코노미·관리자·공지)
+- Task 2: complete (commits ffb27f4..b44663d, review approved) — 서버 27/27
+  - [최종triage] Minor: confiscate 'all' 0잔액시 400(no-op가 맞음), non-string reason→500(400이어야) — 브리프 유래
 - Task 1: complete (commits df5bbe1..e575d22, review approved) — 서버 22/22
   - [최종triage] Important(plan-mandated, 동작정확): economy.js relief 400/429 분기가 reliefStatus 로직 중복 재유도 → reasonCode 반환으로 리팩터 권장
