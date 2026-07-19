@@ -38,3 +38,7 @@
   - [최종triage] Minor: confiscate 'all' 0잔액시 400(no-op가 맞음), non-string reason→500(400이어야) — 브리프 유래
 - Task 1: complete (commits df5bbe1..e575d22, review approved) — 서버 22/22
   - [최종triage] Important(plan-mandated, 동작정확): economy.js relief 400/429 분기가 reliefStatus 로직 중복 재유도 → reasonCode 반환으로 리팩터 권장
+
+## P3 (슬롯·잭팟·사운드)
+- Task 1: complete (commits 045aa82..8717afc, review approved) — 서버 33/33
+  - [최종triage] Minor(기존패턴): applyTransaction의 balance emit이 외부 트랜잭션 커밋 전 발행 가능(현재 무해)
