@@ -63,6 +63,8 @@
 - Task 7: complete (commits c20c250..afb4173, review approved) — 카드 SVG 54개, 매핑 52코드 검증, 클라 빌드
 - Task 8: complete (commits 5bea17b..bb908c7, review+fix) — 테이블목록/관리자 테이블·규칙 화면, Important(테이블 수정UI) fix 적용
 - Task 9: complete (commits 18657b4..109d12a, review+fix) — BlackjackView, 클라 빌드 성공
+- Task 10: 통합 검증 통과 (서버 73/73, 클라 빌드). 브라우저 E2E: BlackjackView 라이브 렌더 + 소켓유저 착석·베팅을 admin 화면이 실시간 스냅샷으로 렌더(waiting→betting, 좌석·베팅액·타이머). 클릭불발은 도구한계.
+- **Plan 4 완료** (테이블 CRUD·BlackjackRunner·라이브 블랙잭)
   - Critical fix: seat:leave arity 서버크래시 → 정규화+회귀테스트(73/73), 전역 예외가드, connect_error 피드백
   - [최종triage] Minor: 액션 버튼 in-flight 가드 없음(서버가 거부, UX노이즈)
   - [최종triage] Minor: CardImg srcFor 2회호출·props 미사용(P4T7 잔여)
