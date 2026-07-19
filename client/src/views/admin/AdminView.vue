@@ -6,6 +6,7 @@ const tabs = [
   { to: '/admin/notices', label: '공지 관리' },
   { to: '/admin/tables', label: '테이블 관리' },
   { to: '/admin/settings', label: '게임 규칙' },
+  { to: '/admin/stats', label: '통계' },
 ]
 </script>
 

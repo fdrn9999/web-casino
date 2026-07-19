@@ -19,6 +19,7 @@ const routes = [
       { path: 'notices', component: () => import('../views/admin/AdminNoticesView.vue') },
       { path: 'tables', component: () => import('../views/admin/AdminTablesView.vue') },
       { path: 'settings', component: () => import('../views/admin/AdminSettingsView.vue') },
+      { path: 'stats', component: () => import('../views/admin/AdminStatsView.vue') },
     ],
   },
 ]
