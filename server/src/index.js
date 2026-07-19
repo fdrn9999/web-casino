@@ -8,6 +8,9 @@ import { ensureJackpot } from './services/jackpot.js'
 import { getSettings } from './services/settings.js'
 import { startRunner, startAllOpenTables } from './games/index.js'
 
+process.on('uncaughtException', (err) => console.error('[uncaughtException]', err))
+process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err))
+
 const db = getDb()
 ensureAdmin(db)
 ensureJackpot(db, getSettings(db, 'slots').jackpotSeed)

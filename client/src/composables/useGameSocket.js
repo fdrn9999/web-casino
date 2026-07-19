@@ -24,7 +24,11 @@ export function useGameSocket(gameKey) {
         }
         resolve(res.state)
       })
-      socket.on('connect_error', (e) => reject(e))
+      socket.on('connect_error', (e) => {
+        alert('테이블에 연결할 수 없습니다. 다시 로그인해 주세요.')
+        router.push('/')
+        reject(e)
+      })
     })
   }
 

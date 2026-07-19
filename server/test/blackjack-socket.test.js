@@ -11,13 +11,13 @@ import { saveSettings } from '../src/services/settings.js'
 import { clearRunners } from '../src/games/registry.js'
 
 describe('blackjack socket', () => {
-  let db, httpServer, io, port, token, tableId
+  let db, httpServer, io, port, token, tableId, app
 
   beforeAll(async () => {
     db = createDb()
     clearRunners()
     saveSettings(db, 'blackjack', { betSeconds: 600, turnSeconds: 600 }, null) // 테스트 중 자동 진행 방지
-    const app = createApp(db, {})
+    app = createApp(db, {})
     httpServer = createServer(app)
     io = createSocketServer(httpServer, db)
     await new Promise((r) => httpServer.listen(0, r))
@@ -70,6 +70,38 @@ describe('blackjack socket', () => {
     await new Promise((r) => socket.on('connect', r))
     const res = await socket.emitWithAck('table:join', { tableId: 999 })
     expect(res.error).toBeTruthy()
+    socket.close()
+  })
+
+  it('seat:leave에 빈 객체 payload를 보내도(실제 클라이언트처럼) 서버가 죽지 않고 정상 응답한다', async () => {
+    // 다른 테스트가 이미 앉힌 유저와 좌석이 겹치지 않도록 별도 유저로 접속한다.
+    const signup = await request(app).post('/api/auth/signup')
+      .send({ username: 'bjsock2', password: 'password1', nickname: '비제이2', agreed: true })
+    const token2 = signup.body.token
+    const socket = ioc(`http://localhost:${port}/blackjack`, { auth: { token: token2 }, transports: ['websocket'] })
+    await new Promise((res, rej) => {
+      socket.on('connect', res)
+      socket.on('connect_error', rej)
+    })
+
+    const joined = await socket.emitWithAck('table:join', { tableId })
+    expect(joined.error).toBeFalsy()
+
+    const sat = await socket.emitWithAck('seat:join', { seat: 4 })
+    expect(sat.ok).toBe(true)
+
+    // 실제 클라이언트(emitAck)는 항상 payload 객체를 함께 보낸다: emitWithAck('seat:leave', {})
+    const left = await socket.emitWithAck('seat:leave', {})
+    expect(left.ok).toBe(true)
+
+    // 서버가 살아있는지 다른 소켓으로 확인 (죽었다면 새 연결이 되지 않는다)
+    const check = connect()
+    await new Promise((res, rej) => {
+      check.on('connect', res)
+      check.on('connect_error', rej)
+    })
+    check.close()
+
     socket.close()
   })
 })

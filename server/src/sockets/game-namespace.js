@@ -34,7 +34,8 @@ export function attachGameNamespace(io, db, gameKey) {
       cb(r ? r.sit(socket.data.userId, socket.data.nickname, seat) : { error: '테이블에 먼저 입장하세요.' })
     })
 
-    socket.on('seat:leave', (cb = () => {}) => {
+    socket.on('seat:leave', (arg, maybeCb) => {
+      const cb = typeof arg === 'function' ? arg : (maybeCb ?? (() => {}))
       const r = runner()
       cb(r ? r.leave(socket.data.userId) : { error: '테이블에 먼저 입장하세요.' })
     })
