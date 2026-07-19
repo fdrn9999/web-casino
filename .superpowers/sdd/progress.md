@@ -45,6 +45,8 @@
 - Task 3: complete (commits dada1ec..6ca9aba, review approved) — 서버 43/43
 - Task 4: complete (commits 376079f..8f79228, review clean, 무결점) — jackpot.mp3 263KB, 클라 빌드
 - Task 5: complete (commits 89a4796..dd508df, review approved) — 클라 빌드, 구현자 라이브검증(스핀·승패·풀 2탭 실시간)
+- Task 6: 통합 검증 통과 (서버 43/43, 클라 빌드, 구현자 라이브검증, 잭팟 end-to-end: 스핀→지급→풀리셋→소켓 won+pool 브로드캐스트 전부 PASS)
+- **Plan 3 완료**
   - [최종triage] Minor: SlotsView 스핀 인터벌 onUnmounted 미정리(이탈시 spinTick 잔존, 브리프 유래)
   - [최종triage] Important(비블로킹,브리프): spin 핸들러 단일 트랜잭션 아님(동기 sqlite라 실무위험 낮음); Minor: 잔액부족시 orphaned rounds행, bets.payout 합산저장
   - [최종triage] Minor(기존패턴): applyTransaction의 balance emit이 외부 트랜잭션 커밋 전 발행 가능(현재 무해)
