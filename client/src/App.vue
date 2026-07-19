@@ -2,6 +2,7 @@
 import { RouterView, RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useSound } from './composables/useSound'
+import JackpotBanner from './components/JackpotBanner.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -15,6 +16,7 @@ function logout() {
 
 <template>
   <div class="min-h-screen flex flex-col">
+    <JackpotBanner />
     <header
       v-if="auth.isLoggedIn"
       class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 bg-emerald-900/80 border-b border-amber-500/30"
