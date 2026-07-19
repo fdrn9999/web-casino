@@ -123,6 +123,10 @@
 - Task 5: complete (commits 8d03297..0271212, review approved, additive+myBet 검증) — 테이블 HUD
 - Task 6: complete (commits d2fd67b..3ae4a99, review approved) — 채팅 서버(필터·rate limit·room), 118/118
 - Task 7: complete (commits 4901ac0..7e84647, review approved, XSS안전) — 채팅 클라
+- Task 8: 최종 E2E 통과 (서버 118/118, 빌드). 브라우저: 출석API+로비버튼, 리더보드 실데이터 3섹션, 테이블 HUD(잔고 59439칩·베팅·상태·한도), 채팅 실시간(채팅유저 메시지 즉시 표시)+rate limit 동작.
+- **Plan 8 완료** (참고사이트 반영 4기능)
+
+## 전체 완료: Plan 1~8 + 슬롯강화 + 보안RNG. 서버 118 테스트, 4게임 라이브 검증.
   - [최종triage] Minor: TableChat v-for index key(front-trim시 패치 스멜, 무해)
   - [최종triage] Minor: RateLimiter Map 미정리(고유유저 누적, 스코프외)
   - [최종triage] Minor: 401 테스트 vacuous(라우터 자체 requireAuth는 존재)
