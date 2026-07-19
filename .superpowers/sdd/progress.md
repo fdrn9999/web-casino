@@ -60,6 +60,7 @@
 - Task 4: complete (commits 620b888..94f5314, review approved+fix) — 서버 59/59, vacuous 404 테스트 강화
 - Task 5: complete (commits 0246b4a..0abb6de) — BlackjackRunner, 서버 70/70
 - Task 6: complete (commits f305286..6a3b892, review approved, 독립재실행 72/72) — 게임 네임스페이스 소켓
+- Task 7: complete (commits c20c250..afb4173, review approved) — 카드 SVG 54개, 매핑 52코드 검증, 클라 빌드
   - Critical fix: 베팅중 이탈 칩소멸(inRound에 betting 누락) → 수정+회귀테스트, 재리뷰 승인
   - Important fix: 슈 언더플로 drawSafe, stop후 사용 가드; 테스트 결정화(딜러BJ flaky 제거)
   - [최종triage] Minor: dealer-BJ done 플래그(수정됨), drawSafe reshuffle는 라운드중 발생 가능(허용)
