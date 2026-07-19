@@ -8,9 +8,11 @@ import { createSocketServer } from './sockets/index.js'
 const db = getDb()
 ensureAdmin(db)
 
-const app = createApp(db)
+const ctx = {}
+const app = createApp(db, ctx)
 const httpServer = createServer(app)
-export const io = createSocketServer(httpServer, db)
+ctx.io = createSocketServer(httpServer, db)
+export const io = ctx.io
 
 const port = process.env.PORT || 4000
 httpServer.listen(port, () => console.log(`베가스 서버 기동: http://localhost:${port}`))
