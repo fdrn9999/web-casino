@@ -45,6 +45,8 @@ onMounted(() => connectSocket())
       <button v-if="(auth.user?.balance ?? 0) < 100"
         class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-red-500"
         @click="reliefModal.show()">⚠️ 파산 구제 신청</button>
+      <RouterLink to="/leaderboard"
+        class="rounded-lg bg-emerald-800 px-3 py-1.5 text-sm font-bold text-amber-300 hover:bg-emerald-700">🏆 명예의 전당</RouterLink>
       <span v-if="bonusMsg" class="text-sm text-amber-300">{{ bonusMsg }}</span>
     </div>
     <NoticeBoard />
