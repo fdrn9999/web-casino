@@ -735,21 +735,26 @@ import { applyTransaction } from './wallet.js'
 export function reconcileUnfinishedRounds(db) {
   const rounds = db.prepare('SELECT id FROM rounds WHERE ended_at IS NULL').all()
   let refunded = 0
-  for (const { id } of rounds) {
+  // 라운드별로 (모든 유저 환불 + 종료 표시)를 단일 트랜잭션으로 원자 처리한다.
+  // 크래시가 커밋 전이면 미환불로 남아 재시도 안전, 커밋 후면 종료 표시돼 다음 기동에서 제외 → 이중환불 없음.
+  const settleRound = db.transaction((id) => {
     const stakes = db.prepare(`
       SELECT user_id, SUM(-amount) staked FROM transactions
       WHERE ref_round_id = ? AND type = 'bet' GROUP BY user_id
     `).all(id)
+    let count = 0
     for (const { user_id, staked } of stakes) {
       if (staked > 0) {
         applyTransaction(db, {
           userId: user_id, type: 'payout', amount: staked, refRoundId: id, reason: '서버 중단 환불',
         })
-        refunded += 1
+        count += 1
       }
     }
     db.prepare(`UPDATE rounds SET ended_at = datetime('now'), result_json = '{"aborted":true}' WHERE id = ?`).run(id)
-  }
+    return count
+  })
+  for (const { id } of rounds) refunded += settleRound(id)
   return refunded
 }
 ```
