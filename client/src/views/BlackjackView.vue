@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import CardImg from '../components/CardImg.vue'
 import FloatingText from '../components/FloatingText.vue'
 import PhaseTimer from '../components/PhaseTimer.vue'
+import TableHud from '../components/TableHud.vue'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
@@ -24,6 +25,15 @@ const mySeatIdx = computed(() => state.value?.seats.findIndex((s) => s?.userId =
 const mySeat = computed(() => (mySeatIdx.value >= 0 ? state.value.seats[mySeatIdx.value] : null))
 const isMyTurn = computed(() => state.value?.phase === 'acting' && state.value.currentSeat === mySeatIdx.value)
 const myHand = computed(() => (isMyTurn.value ? mySeat.value.hands[mySeat.value.activeHand] : null))
+// 내 이번 라운드 총 베팅액: 더블은 핸드당 베팅액 2배, 스플릿은 핸드 수만큼 합산 (딜링 전에는 seat.bet 그대로)
+const myBet = computed(() => {
+  if (!mySeat.value || !mySeat.value.bet) return 0
+  if (!mySeat.value.hands.length) return mySeat.value.bet
+  return mySeat.value.hands.reduce((sum, h) => sum + (h.doubled ? mySeat.value.bet * 2 : mySeat.value.bet), 0)
+})
+const limitLabel = computed(() =>
+  state.value ? `블랙잭 3:2 · ${state.value.rules.minBet.toLocaleString()}~${state.value.rules.maxBet.toLocaleString()}칩` : ''
+)
 
 const PHASE_LABELS = {
   waiting: '플레이어를 기다리는 중', betting: '베팅하세요!', acting: '플레이 진행 중',
@@ -106,10 +116,11 @@ function doAction(move) {
 </script>
 
 <template>
-  <div v-if="state" class="mx-auto max-w-4xl space-y-4">
+  <div v-if="state" class="mx-auto max-w-4xl space-y-4 pb-20">
     <div class="flex flex-wrap items-center gap-2">
       <h1 class="text-lg font-bold text-amber-400">🃏 {{ state.name }}</h1>
       <span class="rounded-full bg-emerald-800 px-2 py-0.5 text-xs text-emerald-200">{{ PHASE_LABELS[state.phase] }}</span>
+      <span class="text-xs text-amber-500/80">블랙잭 3:2</span>
       <span class="text-xs text-emerald-400">베팅 {{ state.rules.minBet.toLocaleString() }}~{{ state.rules.maxBet.toLocaleString() }}칩</span>
       <button class="ml-auto text-sm text-emerald-300 hover:text-amber-300" @click="router.push('/')">로비로</button>
     </div>
@@ -184,5 +195,7 @@ function doAction(move) {
       <p v-if="error" class="mt-2 text-center text-sm text-red-400">{{ error }}</p>
     </section>
     <p v-else class="text-center text-sm text-emerald-400">빈 좌석을 눌러 참가하세요.</p>
+
+    <TableHud :balance="auth.user?.balance ?? 0" :my-bet="myBet" :status-label="PHASE_LABELS[state.phase]" :limit-label="limitLabel" />
   </div>
 </template>

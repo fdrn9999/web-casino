@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PhaseTimer from '../components/PhaseTimer.vue'
+import TableHud from '../components/TableHud.vue'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
@@ -30,6 +31,10 @@ const CHIPS = [100, 500, 1000, 5000]
 const TYPE_LABELS = Object.fromEntries(OUTSIDE_BUTTONS.map((b) => [b.type, b.label]))
 
 const myBets = computed(() => state.value?.bets.filter((b) => b.nickname === auth.user?.nickname) ?? [])
+const myBetTotal = computed(() => myBets.value.reduce((sum, b) => sum + b.amount, 0))
+const limitLabel = computed(() =>
+  state.value ? `${state.value.rules.minBet.toLocaleString()}~${state.value.rules.maxBet.toLocaleString()}칩` : ''
+)
 
 // 유러피언 휠 실제 배치 순서
 const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26]
@@ -104,10 +109,11 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
 </script>
 
 <template>
-  <div v-if="state" class="mx-auto max-w-4xl space-y-4">
+  <div v-if="state" class="mx-auto max-w-4xl space-y-4 pb-20">
     <div class="flex flex-wrap items-center gap-2">
       <h1 class="text-lg font-bold text-amber-400">🎡 {{ state.name }}</h1>
       <span class="rounded-full bg-emerald-800 px-2 py-0.5 text-xs">{{ PHASE_LABELS[state.phase] }}</span>
+      <span class="text-xs text-amber-500/80">유러피언 룰렛 (싱글 제로)</span>
       <span class="text-xs text-emerald-400">👥 {{ state.players.length }}</span>
       <button class="ml-auto text-sm text-emerald-300 hover:text-amber-300" @click="router.push('/')">로비로</button>
     </div>
@@ -183,5 +189,7 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
         </p>
       </div>
     </section>
+
+    <TableHud :balance="auth.user?.balance ?? 0" :my-bet="myBetTotal" :status-label="PHASE_LABELS[state.phase]" :limit-label="limitLabel" />
   </div>
 </template>

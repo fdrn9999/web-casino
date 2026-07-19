@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import CardImg from '../components/CardImg.vue'
 import FloatingText from '../components/FloatingText.vue'
 import PhaseTimer from '../components/PhaseTimer.vue'
+import TableHud from '../components/TableHud.vue'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
@@ -30,6 +31,14 @@ const KIND_BUTTONS = computed(() => [
 const OUTCOME_LABELS = { player: '플레이어 승!', banker: '뱅커 승!', tie: '타이!' }
 const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', revealing: '카드 공개', result: '결과' }
 const BEAD = { player: 'bg-sky-500', banker: 'bg-red-500', tie: 'bg-emerald-500' }
+const myBetTotal = computed(() =>
+  state.value ? state.value.bets.filter((b) => b.nickname === auth.user?.nickname).reduce((sum, b) => sum + b.amount, 0) : 0
+)
+const limitLabel = computed(() =>
+  state.value
+    ? `뱅커 0.95:1 · 타이 ${state.value.rules.tiePayout}:1 · ${state.value.rules.minBet.toLocaleString()}~${state.value.rules.maxBet.toLocaleString()}칩`
+    : ''
+)
 
 onMounted(async () => {
   try {
@@ -63,10 +72,11 @@ async function bet(kind) {
 </script>
 
 <template>
-  <div v-if="state" class="mx-auto max-w-4xl space-y-4">
+  <div v-if="state" class="mx-auto max-w-4xl space-y-4 pb-20">
     <div class="flex flex-wrap items-center gap-2">
       <h1 class="text-lg font-bold text-amber-400">🀄 {{ state.name }}</h1>
       <span class="rounded-full bg-emerald-800 px-2 py-0.5 text-xs">{{ PHASE_LABELS[state.phase] }}</span>
+      <span class="text-xs text-amber-500/80">바카라 · 뱅커 0.95:1</span>
       <span class="text-xs text-emerald-400">👥 {{ state.players.length }}</span>
       <button class="ml-auto text-sm text-emerald-300 hover:text-amber-300" @click="router.push('/')">로비로</button>
     </div>
@@ -126,5 +136,7 @@ async function bet(kind) {
         <p v-for="(b, i) in state.bets" :key="i">{{ b.nickname }} — {{ b.kind }} · {{ b.amount.toLocaleString() }}칩</p>
       </div>
     </section>
+
+    <TableHud :balance="auth.user?.balance ?? 0" :my-bet="myBetTotal" :status-label="PHASE_LABELS[state.phase]" :limit-label="limitLabel" />
   </div>
 </template>
