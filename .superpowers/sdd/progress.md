@@ -50,3 +50,6 @@
   - [최종triage] Minor: SlotsView 스핀 인터벌 onUnmounted 미정리(이탈시 spinTick 잔존, 브리프 유래)
   - [최종triage] Important(비블로킹,브리프): spin 핸들러 단일 트랜잭션 아님(동기 sqlite라 실무위험 낮음); Minor: 잔액부족시 orphaned rounds행, bets.payout 합산저장
   - [최종triage] Minor(기존패턴): applyTransaction의 balance emit이 외부 트랜잭션 커밋 전 발행 가능(현재 무해)
+
+## P4 (테이블·블랙잭)
+- Task 1: complete (commits 447f895..a6f215b, review clean, 무결점) — 서버 46/46
