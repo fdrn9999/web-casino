@@ -12,6 +12,7 @@ import { adminSettingsRouter } from './routes/admin-settings.js'
 import { adminStatsRouter } from './routes/admin-stats.js'
 import { meStatsRouter } from './routes/me-stats.js'
 import { attendanceRouter } from './routes/attendance.js'
+import { leaderboardRouter } from './routes/leaderboard.js'
 import { requireAuth } from './middleware/auth.js'
 
 export function createApp(db, ctx = {}) {
@@ -32,6 +33,7 @@ export function createApp(db, ctx = {}) {
   app.use('/api/admin/settings', adminSettingsRouter(db, ctx))
   app.use('/api/admin/stats', adminStatsRouter(db))
   app.use('/api/attendance', attendanceRouter(db))
+  app.use('/api/leaderboard', leaderboardRouter(db))
 
   app.use('/api', (req, res) => res.status(404).json({ error: '존재하지 않는 API입니다.' }))
 
