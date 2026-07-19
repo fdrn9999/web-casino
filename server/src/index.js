@@ -7,12 +7,17 @@ import { createSocketServer } from './sockets/index.js'
 import { ensureJackpot } from './services/jackpot.js'
 import { getSettings } from './services/settings.js'
 import { startRunner, startAllOpenTables } from './games/index.js'
+import { reconcileUnfinishedRounds } from './services/reconcile.js'
 
 process.on('uncaughtException', (err) => console.error('[uncaughtException]', err))
 process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err))
 
 const db = getDb()
 ensureAdmin(db)
+
+const refunded = reconcileUnfinishedRounds(db)
+if (refunded > 0) console.log(`[reconcile] 미정산 베팅 ${refunded}건 환불 완료`)
+
 ensureJackpot(db, getSettings(db, 'slots').jackpotSeed)
 
 const ctx = {}
