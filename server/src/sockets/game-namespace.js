@@ -1,8 +1,10 @@
 import { verifyToken } from '../middleware/auth.js'
 import { getRunner } from '../games/registry.js'
+import { sanitizeMessage, RateLimiter } from '../games/chat.js'
 
 export function attachGameNamespace(io, db, gameKey) {
   const nsp = io.of(`/${gameKey}`)
+  const chatLimiter = new RateLimiter(2000)
 
   nsp.use((socket, next) => {
     try {
@@ -49,6 +51,25 @@ export function attachGameNamespace(io, db, gameKey) {
     socket.on('action', ({ move } = {}, cb = () => {}) => {
       const r = runner()
       cb(r ? r.action(socket.data.userId, move) : { error: '테이블에 먼저 입장하세요.' })
+    })
+
+    socket.on('chat:send', ({ text } = {}, cb = () => {}) => {
+      const tableId = socket.data.tableId
+      if (!tableId) return cb({ error: '테이블에 먼저 입장하세요.' })
+
+      const sanitized = sanitizeMessage(text)
+      if (!sanitized.ok) return cb({ error: sanitized.error })
+
+      if (!chatLimiter.allow(socket.data.userId)) {
+        return cb({ error: '메시지를 너무 빨리 보내고 있습니다.' })
+      }
+
+      nsp.to(`table:${tableId}`).emit('chat:message', {
+        nickname: socket.data.nickname,
+        text: sanitized.text,
+        at: Date.now(),
+      })
+      cb({ ok: true })
     })
 
     socket.on('disconnect', () => {
