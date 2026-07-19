@@ -26,6 +26,7 @@ export const DEFAULT_SETTINGS = {
     turnSeconds: 15,
   },
   roulette: { minBet: 100, maxBet: 10000, betSeconds: 20, spinSeconds: 5 },
+  baccarat: { minBet: 100, maxBet: 10000, betSeconds: 20, revealSeconds: 4, tiePayout: 8, pairPayout: 11 },
 }
 
 export function getSettings(db, game) {
