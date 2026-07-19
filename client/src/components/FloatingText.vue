@@ -1,17 +1,28 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 
 const items = ref([])
 let seq = 0
+const pendingTimeouts = new Set()
 
 function show(text, variant = 'win') {
   const id = ++seq
   items.value.push({ id, text, variant })
   if (items.value.length > 5) items.value.shift()
-  setTimeout(() => {
+  const timeoutId = setTimeout(() => {
     items.value = items.value.filter((i) => i.id !== id)
+    pendingTimeouts.delete(timeoutId)
   }, 1200)
+  pendingTimeouts.add(timeoutId)
 }
+
+onUnmounted(() => {
+  pendingTimeouts.forEach((timeoutId) => {
+    clearTimeout(timeoutId)
+  })
+  pendingTimeouts.clear()
+})
+
 defineExpose({ show })
 </script>
 

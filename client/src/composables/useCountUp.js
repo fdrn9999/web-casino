@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 
 const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
@@ -22,6 +22,10 @@ export function useCountUp(getTarget, { durationMs = 600 } = {}) {
       if (t < 1) raf = requestAnimationFrame(step)
     }
     raf = requestAnimationFrame(step)
+  })
+
+  onUnmounted(() => {
+    cancelAnimationFrame(raf)
   })
 
   return { display }
