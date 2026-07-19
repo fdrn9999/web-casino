@@ -16,8 +16,6 @@ const state = ref(null)
 const error = ref('')
 const amount = ref(100)
 const selected = ref([])
-const rolling = ref(null)
-let rollTimer = null
 
 const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36])
 const colorClass = (n) => (n === 0 ? 'bg-emerald-600' : RED.has(n) ? 'bg-red-700' : 'bg-neutral-900')
@@ -33,12 +31,26 @@ const TYPE_LABELS = Object.fromEntries(OUTSIDE_BUTTONS.map((b) => [b.type, b.lab
 
 const myBets = computed(() => state.value?.bets.filter((b) => b.nickname === auth.user?.nickname) ?? [])
 
-function startRolling() {
+// 유러피언 휠 실제 배치 순서
+const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26]
+const SEG = 360 / WHEEL_ORDER.length
+const wheelDeg = ref(0)
+const wheelSpinning = ref(false)
+const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+function spinWheelTo(resultNumber, durationMs) {
+  const idx = WHEEL_ORDER.indexOf(resultNumber)
+  // 포인터(12시)에 결과 세그먼트가 오도록: 5바퀴 + 목표 각도
+  const target = 360 * 5 + (360 - idx * SEG)
+  wheelSpinning.value = true
+  wheelDeg.value = wheelDeg.value % 360 // 리셋
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      wheelDeg.value += target
+    })
+  })
   sfx.spinStart()
-  rollTimer = setInterval(() => {
-    rolling.value = Math.floor(Math.random() * 37)
-    sfx.spinTick()
-  }, 90)
+  setTimeout(() => (wheelSpinning.value = false), durationMs)
 }
 
 onMounted(async () => {
@@ -48,10 +60,10 @@ onMounted(async () => {
     return
   }
   game.onState((s) => {
-    if (s.phase === 'spinning' && state.value?.phase !== 'spinning') startRolling()
+    if (s.phase === 'spinning' && state.value?.phase !== 'spinning') {
+      spinWheelTo(s.result, (s.rules.spinSeconds - 0.5) * 1000)
+    }
     if (s.phase === 'result' && state.value?.phase !== 'result') {
-      clearInterval(rollTimer)
-      rolling.value = null
       if (myBets.value.length > 0) {
         // 내 베팅 중 하나라도 결과 번호에 적중했으면 승리음, 아니면 패배음
         const hit = myBets.value.some((b) => b.type === 'inside' && b.numbers?.includes(s.result))
@@ -62,7 +74,6 @@ onMounted(async () => {
   })
 })
 onUnmounted(() => {
-  clearInterval(rollTimer)
   game.disconnect()
 })
 
@@ -105,11 +116,25 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
 
     <!-- 결과/휠 -->
     <section class="rounded-2xl border border-amber-500/20 bg-emerald-900/50 p-4 text-center">
-      <div v-if="rolling !== null" class="text-4xl font-black text-amber-300 tabular-nums">{{ rolling }}</div>
-      <div v-else-if="state.result !== null && state.phase === 'result'"
-        class="mx-auto flex h-16 w-16 items-center justify-center rounded-full text-2xl font-black text-white"
-        :class="colorClass(state.result)">{{ state.result }}</div>
-      <div v-else class="text-sm text-emerald-400">베팅 후 결과를 기다리세요</div>
+      <div class="relative mx-auto h-44 w-44 sm:h-52 sm:w-52">
+        <div class="absolute left-1/2 top-0 z-10 -translate-x-1/2 text-amber-400">▼</div>
+        <div class="h-full w-full rounded-full border-4 border-amber-500/60"
+          :style="{
+            transform: `rotate(${wheelDeg}deg)`,
+            transition: wheelSpinning && !reducedMotion ? `transform ${(state.rules.spinSeconds - 0.5)}s cubic-bezier(0.15, 0.6, 0.15, 1)` : 'none',
+          }">
+          <div v-for="(n, i) in WHEEL_ORDER" :key="n"
+            class="absolute left-1/2 top-1/2 origin-top-left text-[9px] font-bold sm:text-[10px]"
+            :style="{ transform: `rotate(${i * SEG - 90}deg) translateX(64px) rotate(90deg)` }"
+            :class="n === 0 ? 'text-emerald-400' : RED.has(n) ? 'text-red-400' : 'text-neutral-300'">
+            {{ n }}
+          </div>
+        </div>
+        <div v-if="state.phase === 'result' && state.result !== null"
+          class="fx-pop absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full text-2xl font-black text-white"
+          :class="colorClass(state.result)">{{ state.result }}</div>
+      </div>
+      <div v-if="!(state.phase === 'result' && state.result !== null)" class="mt-2 text-sm text-emerald-400">베팅 후 결과를 기다리세요</div>
       <div class="mt-3 flex flex-wrap justify-center gap-1">
         <span v-for="(h, i) in state.history" :key="i"
           class="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
@@ -121,12 +146,12 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
     <section class="rounded-2xl border border-emerald-800 bg-emerald-900/50 p-3">
       <div class="grid grid-cols-13 gap-1" style="grid-template-columns: repeat(13, minmax(0, 1fr));">
         <button class="col-span-1 row-span-3 rounded font-bold text-white"
-          :class="[colorClass(0), selected.includes(0) ? 'ring-2 ring-amber-400' : '']"
+          :class="[colorClass(0), selected.includes(0) ? 'ring-2 ring-amber-400' : '', state.phase === 'result' && state.result === 0 ? 'fx-glow-win' : '']"
           style="grid-row: span 3;" @click="toggleNumber(0)">0</button>
         <template v-for="row in 3">
           <button v-for="col in 12" :key="`${row}-${col}`"
             class="aspect-square rounded text-xs font-bold text-white sm:text-sm"
-            :class="[colorClass((col - 1) * 3 + (4 - row)), selected.includes((col - 1) * 3 + (4 - row)) ? 'ring-2 ring-amber-400' : '']"
+            :class="[colorClass((col - 1) * 3 + (4 - row)), selected.includes((col - 1) * 3 + (4 - row)) ? 'ring-2 ring-amber-400' : '', state.phase === 'result' && state.result === (col - 1) * 3 + (4 - row) ? 'fx-glow-win' : '']"
             @click="toggleNumber((col - 1) * 3 + (4 - row))">
             {{ (col - 1) * 3 + (4 - row) }}
           </button>

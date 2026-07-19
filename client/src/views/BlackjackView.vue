@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import CardImg from '../components/CardImg.vue'
+import FloatingText from '../components/FloatingText.vue'
 import PhaseTimer from '../components/PhaseTimer.vue'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
@@ -17,6 +18,7 @@ const state = ref(null)
 const error = ref('')
 const betAmount = ref(0)
 const CHIPS = [100, 500, 1000, 5000]
+const floating = ref(null)
 
 const mySeatIdx = computed(() => state.value?.seats.findIndex((s) => s?.userId === auth.user?.id) ?? -1)
 const mySeat = computed(() => (mySeatIdx.value >= 0 ? state.value.seats[mySeatIdx.value] : null))
@@ -51,6 +53,10 @@ onMounted(async () => {
       const mine = s.seats.find((seat) => seat?.userId === auth.user?.id)
       const won = mine?.hands.some((h) => h.result && h.result.payout > (h.doubled ? mine.bet * 2 : mine.bet) - 1 && h.result.outcome !== 'push')
       if (mine?.bet > 0) (won ? sfx.win() : sfx.lose())
+      if (mine?.bet > 0) {
+        const total = mine.hands.reduce((sum, h) => sum + (h.result?.payout ?? 0), 0)
+        floating.value?.show(total > 0 ? `+${total.toLocaleString()}칩` : '아쉽네요…', total > 0 ? 'win' : 'lose')
+      }
     }
     state.value = s
   })
@@ -100,6 +106,8 @@ function doAction(move) {
     <PhaseTimer :ends-at="state.phaseEndsAt"
       :total-seconds="state.phase === 'betting' ? state.rules.betSeconds : state.rules.turnSeconds" />
 
+    <div class="relative"><FloatingText ref="floating" /></div>
+
     <!-- 딜러 -->
     <section class="rounded-2xl border border-amber-500/20 bg-emerald-900/50 p-4 text-center">
       <p class="mb-2 text-xs text-emerald-300">딜러 <b v-if="state.dealer.total" class="text-amber-300">{{ state.dealer.total }}</b></p>
@@ -113,7 +121,10 @@ function doAction(move) {
     <section class="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
       <div v-for="(seat, i) in state.seats" :key="i"
         class="rounded-xl border p-2 text-center"
-        :class="state.currentSeat === i ? 'border-amber-400 bg-amber-500/10' : 'border-emerald-800 bg-emerald-900/40'">
+        :class="[
+          state.currentSeat === i ? 'border-amber-400 bg-amber-500/10 fx-pulse-gold' : 'border-emerald-800 bg-emerald-900/40',
+          state.phase === 'result' && seat?.hands.some((h) => h.result && h.result.payout > 0) ? 'fx-glow-win' : '',
+        ]">
         <template v-if="seat">
           <p class="truncate text-xs font-bold" :class="seat.userId === auth.user?.id ? 'text-amber-300' : 'text-emerald-200'">
             {{ seat.nickname }}</p>

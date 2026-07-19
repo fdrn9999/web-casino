@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import CardImg from '../components/CardImg.vue'
+import FloatingText from '../components/FloatingText.vue'
 import PhaseTimer from '../components/PhaseTimer.vue'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
@@ -17,6 +18,7 @@ const state = ref(null)
 const error = ref('')
 const amount = ref(100)
 const CHIPS = [100, 500, 1000, 5000]
+const floating = ref(null)
 
 const KIND_BUTTONS = computed(() => [
   { kind: 'ppair', label: 'P 페어', pay: `${state.value?.rules.pairPayout}:1`, cls: 'bg-sky-900' },
@@ -38,8 +40,14 @@ onMounted(async () => {
   game.onState((s) => {
     if (s.phase === 'revealing' && state.value?.phase !== 'revealing') sfx.deal()
     if (s.phase === 'result' && state.value?.phase !== 'result') {
-      const mine = s.bets.some((b) => b.nickname === auth.user?.nickname)
-      if (mine) sfx.win()
+      const myKinds = s.bets.filter((b) => b.nickname === auth.user?.nickname).map((b) => b.kind)
+      if (myKinds.length) {
+        const won = myKinds.includes(s.result.outcome)
+          || (myKinds.includes('ppair') && s.result.playerPair)
+          || (myKinds.includes('bpair') && s.result.bankerPair)
+        floating.value?.show(won ? '적중!' : '아쉽네요…', won ? 'win' : 'lose')
+        ;(won ? sfx.win : sfx.lose)()
+      }
     }
     state.value = s
   })
@@ -66,15 +74,18 @@ async function bet(kind) {
     <PhaseTimer :ends-at="state.phaseEndsAt" :total-seconds="state.rules.betSeconds" />
 
     <!-- 카드 -->
+    <div class="relative"><FloatingText ref="floating" /></div>
     <section class="grid grid-cols-2 gap-3">
-      <div class="rounded-2xl border border-sky-500/30 bg-emerald-900/50 p-4 text-center">
+      <div class="rounded-2xl border border-sky-500/30 bg-emerald-900/50 p-4 text-center"
+        :class="state.phase === 'result' && state.result?.outcome === 'player' ? 'fx-glow-win' : ''">
         <p class="text-xs font-bold text-sky-300">플레이어
           <b v-if="state.result" class="text-lg">{{ state.result.playerTotal }}</b></p>
         <div class="mt-2 flex min-h-16 justify-center gap-1">
           <CardImg v-for="(card, i) in state.result?.player ?? []" :key="i" :code="card.code" />
         </div>
       </div>
-      <div class="rounded-2xl border border-red-500/30 bg-emerald-900/50 p-4 text-center">
+      <div class="rounded-2xl border border-red-500/30 bg-emerald-900/50 p-4 text-center"
+        :class="state.phase === 'result' && state.result?.outcome === 'banker' ? 'fx-glow-win' : ''">
         <p class="text-xs font-bold text-red-300">뱅커
           <b v-if="state.result" class="text-lg">{{ state.result.bankerTotal }}</b></p>
         <div class="mt-2 flex min-h-16 justify-center gap-1">
@@ -83,7 +94,7 @@ async function bet(kind) {
       </div>
     </section>
 
-    <p v-if="state.phase === 'result' && state.result" class="text-center text-xl font-black text-amber-400">
+    <p v-if="state.phase === 'result' && state.result" class="fx-pop text-center text-xl font-black text-amber-400">
       {{ OUTCOME_LABELS[state.result.outcome] }}
       <span v-if="state.result.playerPair" class="ml-2 text-sm text-sky-300">P페어!</span>
       <span v-if="state.result.bankerPair" class="ml-2 text-sm text-red-300">B페어!</span>
