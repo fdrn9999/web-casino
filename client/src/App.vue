@@ -1,13 +1,23 @@
 <script setup>
+import { ref, watch } from 'vue'
 import { RouterView, RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useSound } from './composables/useSound'
+import { useCountUp } from './composables/useCountUp'
 import JackpotBanner from './components/JackpotBanner.vue'
 import RestReminder from './components/RestReminder.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
 const { muted, toggleMute } = useSound()
+
+const { display: balanceDisplay } = useCountUp(() => auth.user?.balance)
+const balanceFlash = ref('')
+watch(() => auth.user?.balance, (next, prev) => {
+  if (prev == null || next == null) return
+  balanceFlash.value = next > prev ? 'text-amber-300 scale-110' : 'text-red-400'
+  setTimeout(() => (balanceFlash.value = ''), 300)
+})
 
 function logout() {
   auth.logout()
@@ -26,8 +36,9 @@ function logout() {
       <RouterLink to="/" class="text-lg font-bold text-amber-400">🎰 베가스</RouterLink>
       <div class="ml-auto flex items-center gap-3">
         <RouterLink v-if="auth.isAdmin" to="/admin" class="text-sm text-amber-300 hover:underline">⚙️ 관리자</RouterLink>
-        <span class="rounded-full bg-emerald-800 px-3 py-1 text-sm font-semibold text-amber-200">
-          💰 {{ (auth.user?.balance ?? 0).toLocaleString() }} 칩
+        <span class="rounded-full bg-emerald-800 px-3 py-1 text-sm font-semibold text-amber-200 transition-all duration-300"
+          :class="balanceFlash">
+          💰 {{ balanceDisplay.toLocaleString() }} 칩
         </span>
         <RouterLink to="/me" class="text-sm text-emerald-200 hover:text-amber-300">{{ auth.user?.nickname }}</RouterLink>
         <button class="text-lg" :title="muted ? '소리 켜기' : '소리 끄기'" @click="toggleMute">

@@ -52,7 +52,7 @@ onMounted(() => connectSocket())
         v-for="g in games"
         :key="g.key"
         :to="g.to"
-        class="rounded-2xl border border-amber-500/20 bg-emerald-900/60 p-5"
+        class="fx-pop rounded-2xl border border-amber-500/20 bg-emerald-900/60 p-5 transition-all duration-200 hover:-translate-y-1 hover:border-amber-400/60 hover:shadow-xl hover:shadow-amber-500/10"
         :class="(g.to || g.tables) ? 'hover:border-amber-400/50' : 'opacity-80'"
       >
         <div class="text-3xl">{{ g.emoji }}</div>
