@@ -27,7 +27,7 @@ function logout() {
         <span class="rounded-full bg-emerald-800 px-3 py-1 text-sm font-semibold text-amber-200">
           💰 {{ (auth.user?.balance ?? 0).toLocaleString() }} 칩
         </span>
-        <span class="text-sm text-emerald-200">{{ auth.user?.nickname }}</span>
+        <RouterLink to="/me" class="text-sm text-emerald-200 hover:text-amber-300">{{ auth.user?.nickname }}</RouterLink>
         <button class="text-lg" :title="muted ? '소리 켜기' : '소리 끄기'" @click="toggleMute">
           {{ muted ? '🔇' : '🔊' }}
         </button>
