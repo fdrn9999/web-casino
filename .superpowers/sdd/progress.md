@@ -108,3 +108,4 @@
 ## P7 (이펙트·UX)
 - Task 1: complete (commits aca1f91..7d30f05, review+fix) — 이펙트 기반, rAF/타이머 정리 fix
 - Task 2: complete (commits fc1efdf..53ad227, review approved) — 잔액 카운트업·위젯 shimmer·로비 호버
+- Task 3: complete (commits 9c8f09b..6c2a2c8, review approved) — 카드 딜인·홀카드 플립
