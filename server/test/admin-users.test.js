@@ -13,6 +13,7 @@ describe('admin users', () => {
     const fakeIo = {
       to: (room) => ({ emit: (ev, p) => disconnected.push({ room, ev, p }) }),
       in: (room) => ({ disconnectSockets: () => disconnected.push({ room, kicked: true }) }),
+      of: () => fakeIo,
     }
     app = createApp(db, { io: fakeIo })
     ensureAdmin(db)

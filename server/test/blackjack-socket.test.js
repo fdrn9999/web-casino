@@ -4,7 +4,7 @@ import { io as ioc } from 'socket.io-client'
 import request from 'supertest'
 import { createDb } from '../src/db/index.js'
 import { createApp } from '../src/app.js'
-import { createSocketServer } from '../src/sockets/index.js'
+import { createSocketServer, disconnectUser } from '../src/sockets/index.js'
 import { startRunner } from '../src/games/index.js'
 import { createTable } from '../src/services/tables.js'
 import { saveSettings } from '../src/services/settings.js'
@@ -103,5 +103,30 @@ describe('blackjack socket', () => {
     check.close()
 
     socket.close()
+  })
+
+  it('관리자가 유저를 차단하면 활성 게임 소켓(/blackjack)도 강제 종료된다', async () => {
+    const signup = await request(app).post('/api/auth/signup')
+      .send({ username: 'bjsock3', password: 'password1', nickname: '비제이3', agreed: true })
+    const userId = signup.body.user.id
+    const token3 = signup.body.token
+    const socket = ioc(`http://localhost:${port}/blackjack`, { auth: { token: token3 }, transports: ['websocket'] })
+    await new Promise((res, rej) => {
+      socket.on('connect', res)
+      socket.on('connect_error', rej)
+    })
+
+    const joined = await socket.emitWithAck('table:join', { tableId })
+    expect(joined.error).toBeFalsy()
+
+    const bannedPromise = new Promise((res) => socket.once('session:banned', res))
+    const disconnectPromise = new Promise((res) => socket.once('disconnect', res))
+
+    disconnectUser(io, userId, 'banned')
+
+    const banned = await bannedPromise
+    expect(banned.reason).toBe('banned')
+    await disconnectPromise
+    expect(socket.connected).toBe(false)
   })
 })

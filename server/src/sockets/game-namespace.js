@@ -20,6 +20,7 @@ export function attachGameNamespace(io, db, gameKey) {
   })
 
   nsp.on('connection', (socket) => {
+    socket.join(`user:${socket.data.userId}`)
     const runner = () => getRunner(socket.data.tableId)
 
     socket.on('table:join', ({ tableId } = {}, cb = () => {}) => {

@@ -39,4 +39,10 @@ export function createSocketServer(httpServer, db) {
 export function disconnectUser(io, userId, reason = '') {
   io.to(`user:${userId}`).emit('session:banned', { reason })
   io.in(`user:${userId}`).disconnectSockets(true)
+
+  for (const gameKey of GAME_KEYS) {
+    const nsp = io.of('/' + gameKey)
+    nsp.to(`user:${userId}`).emit('session:banned', { reason })
+    nsp.in(`user:${userId}`).disconnectSockets(true)
+  }
 }
