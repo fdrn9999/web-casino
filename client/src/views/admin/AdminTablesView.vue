@@ -6,10 +6,15 @@ import { onTablesUpdate } from '../../composables/useSocket'
 const tables = ref([])
 const form = ref({ game: 'blackjack', name: '', useLimits: false, minBet: 100, maxBet: 5000 })
 const msg = ref('')
+const editingId = ref(null)
 let off
 
 async function load() {
   tables.value = (await api('/tables')).tables
+}
+
+function resetForm() {
+  form.value = { game: 'blackjack', name: '', useLimits: false, minBet: 100, maxBet: 5000 }
 }
 
 async function create() {
@@ -24,6 +29,50 @@ async function create() {
   } catch (e) {
     msg.value = e.message
   }
+}
+
+function startEdit(t) {
+  msg.value = ''
+  editingId.value = t.id
+  form.value.game = t.game
+  form.value.name = t.name
+  if (t.limits) {
+    form.value.useLimits = true
+    form.value.minBet = t.limits.minBet
+    form.value.maxBet = t.limits.maxBet
+  } else {
+    form.value.useLimits = false
+    form.value.minBet = 100
+    form.value.maxBet = 5000
+  }
+}
+
+function cancelEdit() {
+  editingId.value = null
+  resetForm()
+  msg.value = ''
+}
+
+async function save() {
+  msg.value = ''
+  try {
+    const body = {
+      name: form.value.name,
+      limits: form.value.useLimits ? { minBet: Number(form.value.minBet), maxBet: Number(form.value.maxBet) } : null,
+    }
+    await api(`/admin/tables/${editingId.value}`, { method: 'PUT', body })
+    editingId.value = null
+    resetForm()
+    await load()
+    msg.value = '테이블이 수정되었습니다.'
+  } catch (e) {
+    msg.value = e.message
+  }
+}
+
+function submitForm() {
+  if (editingId.value) save()
+  else create()
 }
 
 async function act(id, path, confirmMsg) {
@@ -47,10 +96,10 @@ onUnmounted(() => off?.())
 
 <template>
   <div class="space-y-4">
-    <form class="flex flex-wrap items-end gap-2 rounded-xl border border-emerald-800 bg-emerald-900/40 p-4" @submit.prevent="create">
+    <form class="flex flex-wrap items-end gap-2 rounded-xl border border-emerald-800 bg-emerald-900/40 p-4" @submit.prevent="submitForm">
       <div>
         <label class="block text-xs text-emerald-300" for="game">게임</label>
-        <select id="game" v-model="form.game" class="rounded-lg border border-emerald-700 bg-emerald-950 px-2 py-1.5 text-sm">
+        <select id="game" v-model="form.game" :disabled="!!editingId" class="rounded-lg border border-emerald-700 bg-emerald-950 px-2 py-1.5 text-sm disabled:opacity-50">
           <option value="blackjack">블랙잭</option>
           <option value="roulette">룰렛</option>
           <option value="baccarat">바카라</option>
@@ -67,7 +116,8 @@ onUnmounted(() => off?.())
         <input v-model="form.minBet" type="number" class="w-24 rounded-lg border border-emerald-700 bg-emerald-950 px-2 py-1.5 text-sm" placeholder="최소" />
         <input v-model="form.maxBet" type="number" class="w-24 rounded-lg border border-emerald-700 bg-emerald-950 px-2 py-1.5 text-sm" placeholder="최대" />
       </template>
-      <button class="rounded-lg bg-amber-500 px-4 py-1.5 text-sm font-bold text-emerald-950 hover:bg-amber-400">생성</button>
+      <button class="rounded-lg bg-amber-500 px-4 py-1.5 text-sm font-bold text-emerald-950 hover:bg-amber-400">{{ editingId ? '수정 저장' : '생성' }}</button>
+      <button v-if="editingId" type="button" class="rounded-lg border border-emerald-700 px-4 py-1.5 text-sm text-emerald-300 hover:bg-emerald-900" @click="cancelEdit">취소</button>
     </form>
     <p v-if="msg" class="text-sm text-amber-300">{{ msg }}</p>
 
@@ -86,6 +136,7 @@ onUnmounted(() => off?.())
               <span :class="t.status === 'open' ? 'text-emerald-400' : 'text-red-400'">{{ t.status === 'open' ? '운영 중' : '닫힘' }}</span>
             </td>
             <td class="flex gap-2 p-2 text-xs">
+              <button class="text-amber-300 hover:underline" @click="startEdit(t)">수정</button>
               <button v-if="t.status === 'open'" class="text-orange-400 hover:underline"
                 @click="act(t.id, 'close', '테이블을 닫을까요? 진행 중 베팅은 환불됩니다.')">닫기</button>
               <button v-else class="text-emerald-300 hover:underline" @click="act(t.id, 'reopen')">열기</button>

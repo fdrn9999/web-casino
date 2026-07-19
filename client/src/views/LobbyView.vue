@@ -53,7 +53,7 @@ onMounted(() => connectSocket())
         :key="g.key"
         :to="g.to"
         class="rounded-2xl border border-amber-500/20 bg-emerald-900/60 p-5"
-        :class="g.to ? 'hover:border-amber-400/50' : 'opacity-80'"
+        :class="(g.to || g.tables) ? 'hover:border-amber-400/50' : 'opacity-80'"
       >
         <div class="text-3xl">{{ g.emoji }}</div>
         <h2 class="mt-2 text-lg font-bold text-amber-300">{{ g.name }}</h2>
