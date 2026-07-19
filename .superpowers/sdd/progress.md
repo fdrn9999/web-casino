@@ -119,4 +119,5 @@
 - Task 1: complete (commits cefe4f0..6e2dbf2, review+fix) — 출석부 서버, 105/105, GET nextReward 리셋일치 fix
 - Task 2: complete (commits 09ee33d..cef4528, review clean, 무결점) — 출석부 모달
 - Task 3: complete (commits 214485a..521941c, review approved) — 리더보드 API, 109/109
+- Task 4: complete (commits 96cd304..5e452e9, review clean, 무결점) — 리더보드 화면
   - [최종triage] Minor: 401 테스트 vacuous(라우터 자체 requireAuth는 존재)
