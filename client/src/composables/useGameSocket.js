@@ -6,10 +6,12 @@ export function useGameSocket(gameKey) {
   const auth = useAuthStore()
   let socket = null
   const stateListeners = new Set()
+  const chatListeners = new Set()
 
   function connect(tableId) {
     socket = io(`/${gameKey}`, { auth: { token: auth.token } })
     socket.on('table:state', (s) => stateListeners.forEach((fn) => fn(s)))
+    socket.on('chat:message', (msg) => chatListeners.forEach((fn) => fn(msg)))
     socket.on('table:closed', () => {
       alert('관리자가 테이블을 닫았습니다. 베팅은 환불되었습니다.')
       router.push('/')
@@ -41,10 +43,19 @@ export function useGameSocket(gameKey) {
     return () => stateListeners.delete(fn)
   }
 
+  function onChat(fn) {
+    chatListeners.add(fn)
+    return () => chatListeners.delete(fn)
+  }
+
+  function sendChat(text) {
+    return socket.emitWithAck('chat:send', { text })
+  }
+
   function disconnect() {
     socket?.close()
     socket = null
   }
 
-  return { connect, emitAck, onState, disconnect }
+  return { connect, emitAck, onState, onChat, sendChat, disconnect }
 }

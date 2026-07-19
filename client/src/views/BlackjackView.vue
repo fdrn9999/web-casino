@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import CardImg from '../components/CardImg.vue'
 import FloatingText from '../components/FloatingText.vue'
 import PhaseTimer from '../components/PhaseTimer.vue'
+import TableChat from '../components/TableChat.vue'
 import TableHud from '../components/TableHud.vue'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
@@ -196,6 +197,7 @@ function doAction(move) {
     </section>
     <p v-else class="text-center text-sm text-emerald-400">빈 좌석을 눌러 참가하세요.</p>
 
+    <TableChat :game="game" />
     <TableHud :balance="auth.user?.balance ?? 0" :my-bet="myBet" :status-label="PHASE_LABELS[state.phase]" :limit-label="limitLabel" />
   </div>
 </template>

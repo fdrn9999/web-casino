@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PhaseTimer from '../components/PhaseTimer.vue'
+import TableChat from '../components/TableChat.vue'
 import TableHud from '../components/TableHud.vue'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
@@ -190,6 +191,7 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
       </div>
     </section>
 
+    <TableChat :game="game" />
     <TableHud :balance="auth.user?.balance ?? 0" :my-bet="myBetTotal" :status-label="PHASE_LABELS[state.phase]" :limit-label="limitLabel" />
   </div>
 </template>
