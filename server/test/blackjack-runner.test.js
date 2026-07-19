@@ -45,7 +45,9 @@ describe('BlackjackRunner', () => {
     t = makeTimers()
   })
 
-  function makeRunner(rng = Math.random) {
+  // 기본 rng를 결정적 상수로: 딜러/플레이어 내추럴 블랙잭이 무작위로 발생해
+  // 페이즈 전이 단언이 간헐 실패하는 것을 막는다(카드를 직접 강제하는 테스트에는 무해).
+  function makeRunner(rng = () => 0.1) {
     return new BlackjackRunner({ db, nsp: fakeNsp, table, timers: t.timers, rng })
   }
 
@@ -74,7 +76,9 @@ describe('BlackjackRunner', () => {
   })
 
   it('베팅 마감 → 딜링 → 전원 자동 스탠드 → 딜러 → 정산 → 다음 베팅 (풀 사이클)', () => {
-    const r = makeRunner()
+    // rng 고정: 딜러/플레이어 내추럴 블랙잭·21이 없는 결정적 딜(p1=16,p2=15,딜러=19)이라
+    // 페이즈 전이(acting→...) 단언이 간헐 실패하지 않는다.
+    const r = makeRunner(() => 0.1)
     r.sit(u1, 'p1', 0)
     r.sit(u2, 'p2', 1)
     r.placeBet(u1, 1000)
@@ -137,7 +141,8 @@ describe('BlackjackRunner', () => {
   })
 
   it('베팅 후 이탈해도 칩이 소멸되지 않는다', () => {
-    const r = makeRunner()
+    // rng 고정: 내추럴 블랙잭 없는 결정적 딜로 페이즈 단언 안정화(칩 보존 단언은 그대로).
+    const r = makeRunner(() => 0.1)
     r.sit(u1, 'p1', 0)
     r.sit(u2, 'p2', 1)
     r.placeBet(u1, 1000)
