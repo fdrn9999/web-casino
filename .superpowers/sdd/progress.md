@@ -92,3 +92,4 @@
 - Task 1: complete (commits 54740bd..d506e4e, review clean, 무결점) — bet:place 일반화, 73/73
 
 ## P6 (통계·마이페이지·마무리)
+- Task 1: complete (commits 996e39b..dc41607, review approved, 재실행 94/94) — 관리자 통계 API
