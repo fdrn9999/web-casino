@@ -19,6 +19,7 @@ function logout() {
     >
       <RouterLink to="/" class="text-lg font-bold text-amber-400">🎰 베가스</RouterLink>
       <div class="ml-auto flex items-center gap-3">
+        <RouterLink v-if="auth.isAdmin" to="/admin" class="text-sm text-amber-300 hover:underline">⚙️ 관리자</RouterLink>
         <span class="rounded-full bg-emerald-800 px-3 py-1 text-sm font-semibold text-amber-200">
           💰 {{ (auth.user?.balance ?? 0).toLocaleString() }} 칩
         </span>
