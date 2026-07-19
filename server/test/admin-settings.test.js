@@ -42,5 +42,6 @@ describe('admin settings', () => {
   it('없는 게임 키는 404', async () => {
     const res = await request(app).get('/api/admin/settings/poker').set('Authorization', `Bearer ${adminToken}`)
     expect(res.status).toBe(404)
+    expect(res.body.error).toBe('없는 설정 그룹입니다.')
   })
 })
