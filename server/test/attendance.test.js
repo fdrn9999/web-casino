@@ -39,4 +39,11 @@ describe('attendance', () => {
     const after = await request(app).get('/api/attendance').set('Authorization',`Bearer ${token}`)
     expect(after.body.todayClaimed).toBe(true); expect(after.body.streak).toBe(1)
   })
+  it('GET: 끊긴 streak(5일전)은 nextReward 1000 미리보기', async () => {
+    db.prepare("UPDATE users SET last_attendance = date('now','+9 hours','-5 day'), attendance_streak = 5 WHERE id = ?").run(id)
+    const res = await request(app).get('/api/attendance').set('Authorization',`Bearer ${token}`)
+    expect(res.body.nextReward).toBe(1000)
+    expect(res.body.streak).toBe(5)
+    expect(res.body.todayClaimed).toBe(false)
+  })
 })

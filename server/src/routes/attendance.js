@@ -15,15 +15,16 @@ export function attendanceRouter(db) {
   r.get('/', (req, res) => {
     const { attendanceRewards } = getSettings(db, 'economy')
     const today = kstDateString()
+    const yesterday = kstDateString(new Date(Date.now() - 86400000))
     const row = db.prepare('SELECT attendance_streak, last_attendance FROM users WHERE id = ?').get(req.user.id)
     const todayClaimed = row.last_attendance === today
     const streak = row.attendance_streak
-    const nextStreak = todayClaimed ? streak : streak + 1
+    const nextStreak = todayClaimed ? streak : (row.last_attendance === yesterday ? streak + 1 : 1)
     res.json({
       streak,
       todayClaimed,
       rewards: attendanceRewards,
-      nextReward: rewardFor(attendanceRewards, nextStreak || 1),
+      nextReward: rewardFor(attendanceRewards, nextStreak),
     })
   })
 
