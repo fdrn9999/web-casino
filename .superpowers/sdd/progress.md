@@ -109,3 +109,4 @@
 - Task 1: complete (commits aca1f91..7d30f05, review+fix) — 이펙트 기반, rAF/타이머 정리 fix
 - Task 2: complete (commits fc1efdf..53ad227, review approved) — 잔액 카운트업·위젯 shimmer·로비 호버
 - Task 3: complete (commits 9c8f09b..6c2a2c8, review approved) — 카드 딜인·홀카드 플립
+- Task 4: complete (commits f6be340..1275ea4, review+fix) — 잭팟 풀스크린 연출(라이브검증), unmount 정리 fix
