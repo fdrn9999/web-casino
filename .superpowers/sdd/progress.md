@@ -16,6 +16,7 @@
   - Minor: signup 검증 분기 테스트 미포함(브리프 유래), 중복검사 비원자적(단일프로세스 무해)
 - Task 6: complete (commits 2724411..37c5d3f, review clean) — 서버 테스트 18개
   - Minor: walletEvents 리스너 재구독 시 정리 없음(현재 1회 호출이라 무해, 최종리뷰 triage)
+- Task 7: complete (commits de979e6..ed64209, review clean, 무결점) — 미사용 hero.png 잔존(무해)
 - Task 4: complete (commits 4574c93..4876c00, review clean)
   - Minor: type enum 미검증(스코프외), rollback 비발행 테스트 없음(구조상 보장), 없는유저 bare Error
 - Task 1: complete (commits 66b6c4a..ed2e6ea, review clean) — 포트 3000→4000 재조정 포함
