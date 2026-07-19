@@ -86,5 +86,7 @@
 - Task 5: complete (commits 88abe63..41b5bfc, review approved, 재실행+자금흐름 안전) — BaccaratRunner, 91/91
 - Task 6: complete (commits 0be52a1..853edf3, review approved, 베팅페이로드 서버계약 일치검증) — 룰렛 화면, 클라 빌드
 - Task 7: complete (commits 795cda2..0b53038, review approved) — 바카라 화면, 4게임 완성, 클라 빌드
+- Task 8: 통합 검증 통과 (서버 91/91, 빌드). 브라우저 E2E: 룰렛(번호판·아웃사이드·소켓 실시간 베팅·2인 반영) + 바카라(5베팅버튼·페이즈·타이머) 라이브 렌더 확인.
+- **Plan 5 완료** (룰렛·바카라)
   - [최종triage] Minor: 마지막이탈시 orphaned rounds행(reconcile가 처리), 20베팅캡 미테스트
 - Task 1: complete (commits 54740bd..d506e4e, review clean, 무결점) — bet:place 일반화, 73/73
