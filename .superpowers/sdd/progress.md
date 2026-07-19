@@ -110,3 +110,5 @@
 - Task 2: complete (commits fc1efdf..53ad227, review approved) — 잔액 카운트업·위젯 shimmer·로비 호버
 - Task 3: complete (commits 9c8f09b..6c2a2c8, review approved) — 카드 딜인·홀카드 플립
 - Task 4: complete (commits f6be340..1275ea4, review+fix) — 잭팟 풀스크린 연출(라이브검증), unmount 정리 fix
+- Task 5: complete (commits a63a6fe..9bc1197, review+fix) — 룰렛휠·블랙잭/바카라 결과연출
+  - Important fix(2): 휠 다회전 정렬(4라운드 브라우저검증), 블랙잭 push 무승부 중립표시(~25라운드 검증)
