@@ -1,6 +1,7 @@
 import { Server } from 'socket.io'
 import { verifyToken } from '../middleware/auth.js'
 import { walletEvents } from '../services/wallet.js'
+import { jackpotEvents } from '../services/jackpot.js'
 
 export function createSocketServer(httpServer, db) {
   const io = new Server(httpServer)
@@ -24,6 +25,9 @@ export function createSocketServer(httpServer, db) {
   walletEvents.on('balance', ({ userId, balance }) => {
     io.to(`user:${userId}`).emit('balance:update', { balance })
   })
+
+  jackpotEvents.on('pool', ({ pool }) => io.emit('jackpot:pool', { pool }))
+  jackpotEvents.on('won', ({ nickname, amount }) => io.emit('jackpot:won', { nickname, amount }))
 
   return io
 }

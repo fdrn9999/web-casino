@@ -4,9 +4,12 @@ import { createApp } from './app.js'
 import { getDb } from './db/index.js'
 import { ensureAdmin } from './services/bootstrap.js'
 import { createSocketServer } from './sockets/index.js'
+import { ensureJackpot } from './services/jackpot.js'
+import { getSettings } from './services/settings.js'
 
 const db = getDb()
 ensureAdmin(db)
+ensureJackpot(db, getSettings(db, 'slots').jackpotSeed)
 
 const ctx = {}
 const app = createApp(db, ctx)
