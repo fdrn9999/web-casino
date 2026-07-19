@@ -4,6 +4,8 @@ import { economyRouter } from './routes/economy.js'
 import { adminUsersRouter } from './routes/admin-users.js'
 import { noticesRouter, adminNoticesRouter } from './routes/notices.js'
 import { slotsRouter } from './routes/slots.js'
+import { tablesRouter } from './routes/tables.js'
+import { adminTablesRouter } from './routes/admin-tables.js'
 import { requireAuth } from './middleware/auth.js'
 
 export function createApp(db, ctx = {}) {
@@ -18,6 +20,8 @@ export function createApp(db, ctx = {}) {
   app.use('/api/admin/notices', adminNoticesRouter(db, ctx))
   app.use('/api', economyRouter(db))
   app.use('/api/slots', slotsRouter(db))
+  app.use('/api/tables', tablesRouter(db))
+  app.use('/api/admin/tables', adminTablesRouter(db, ctx))
 
   app.use('/api', (req, res) => res.status(404).json({ error: '존재하지 않는 API입니다.' }))
   app.use((err, req, res, next) => {
