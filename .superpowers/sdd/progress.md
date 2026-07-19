@@ -57,6 +57,7 @@
   - [최종triage] Minor: fromSplit 테스트 없음(수동검증 정확), doubled 파라미터 미사용(인터페이스 규약)
 - security: 카드/슬롯 기본 RNG를 crypto CSPRNG로 (602616e) — CWE-338 대응(가상머니라 금전위험 없으나 편향제거)
 - Task 3: complete (commits a6ea24f..b849763, review approved) — 서버 56/56
+- Task 4: complete (commits 620b888..94f5314, review approved+fix) — 서버 59/59, vacuous 404 테스트 강화
   - [최종triage] Minor(브리프): PUT 없는id 400(404여야), non-string name→500
 
 ## 사용자 추가 요청 (mid-flight)
