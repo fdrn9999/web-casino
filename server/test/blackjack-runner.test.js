@@ -135,4 +135,159 @@ describe('BlackjackRunner', () => {
     expect(res.ok).toBe(true)
     expect(r.seats[0].hands[0].done).toBe(true)
   })
+
+  it('베팅 후 이탈해도 칩이 소멸되지 않는다', () => {
+    const r = makeRunner()
+    r.sit(u1, 'p1', 0)
+    r.sit(u2, 'p2', 1)
+    r.placeBet(u1, 1000)
+    r.placeBet(u2, 500)
+    expect(r.snapshot().phase).toBe('betting')
+    // 베팅 완료 후, 베팅 페이즈 도중 이탈 시도 (칩은 이미 차감된 상태)
+    expect(r.leave(u1).ok).toBe(true)
+    // 좌석은 즉시 비워지지 않고 leaving 플래그만 세팅되어 라운드에 계속 참여해야 한다
+    expect(r.seats[0]).not.toBeNull()
+    expect(r.seats[0].leaving).toBe(true)
+
+    t.fire() // 베팅 마감 → 딜링 → acting (첫 턴 타이머 장전)
+    expect(r.snapshot().phase).toBe('acting')
+    t.fire() // 첫 좌석 자동 스탠드(이탈자, 응답 없음) → 다음 좌석 턴
+    t.fire() // 마지막 좌석 자동 스탠드 → dealer 페이즈 (result 예약)
+    t.fire() // 정산 실행 → 다음 betting 예약까지
+
+    // 정산 완료: bets 2건 기록 (이탈자 포함, 정상 정산됨)
+    expect(db.prepare('SELECT COUNT(*) c FROM bets').get().c).toBe(2)
+    // 칩 보존: 두 유저 잔액 합 = 20000 - 1500(베팅액) + 총지급액
+    const balSum = db.prepare('SELECT SUM(balance) s FROM users').get().s
+    const payoutSum = db.prepare('SELECT SUM(payout) s FROM bets').get().s
+    expect(balSum).toBe(20000 - 1500 + payoutSum)
+    // 이탈 신청한 좌석은 정산 후 비워진다
+    expect(r.seats[0]).toBeNull()
+  })
+
+  it('더블하면 추가 베팅만큼 차감되고 2배 스테이크로 정산된다', () => {
+    const r = makeRunner()
+    r.sit(u1, 'p1', 0)
+    r.placeBet(u1, 1000)
+    t.fire() // 딜링 → acting
+    // 자연 블랙잭 등 경쟁 상태를 배제하기 위해 결정적 상태로 강제 재지정
+    r.clearTimer()
+    r.phase = 'acting'
+    r.currentSeat = 0
+    r.dealerHidden = true
+    r.dealerCards = [
+      { rank: '10', suit: 'S', code: '10S' },
+      { rank: '9', suit: 'H', code: '9H' },
+    ] // 19, hitSoft17=false이므로 추가 드로우 없음
+    r.seats[0].hands = [{
+      cards: [
+        { rank: '5', suit: 'C', code: '5C' },
+        { rank: '6', suit: 'C', code: '6C' },
+      ],
+      doubled: false, surrendered: false, done: false, fromSplit: false,
+    }]
+    r.seats[0].activeHand = 0
+    r.shoe = [{ rank: '9', suit: 'D', code: '9D' }] // 더블 드로우용 카드 1장
+
+    const balAfterBet = db.prepare('SELECT balance FROM users WHERE id = ?').get(u1).balance
+    const res = r.action(u1, 'double')
+    expect(res.ok).toBe(true)
+    expect(db.prepare('SELECT balance FROM users WHERE id = ?').get(u1).balance).toBe(balAfterBet - 1000) // 추가 베팅 차감
+    expect(r.seats[0].hands[0].doubled).toBe(true)
+    expect(r.seats[0].hands[0].done).toBe(true)
+    expect(r.snapshot().phase).toBe('dealer')
+
+    t.fire() // settleRound
+    expect(r.seats[0].hands[0].result.outcome).toBe('win')
+    expect(r.seats[0].hands[0].result.payout).toBe(4000) // handBet 2000 × 2배(승리)
+    const finalBal = db.prepare('SELECT balance FROM users WHERE id = ?').get(u1).balance
+    expect(finalBal).toBe(balAfterBet - 1000 + 4000)
+  })
+
+  it('스플릿하면 두 개의 핸드가 생기고 추가 스테이크가 차감되며 각각 정산된다', () => {
+    const r = makeRunner()
+    r.sit(u1, 'p1', 0)
+    r.placeBet(u1, 1000)
+    t.fire() // 딜링 → acting
+    // 자연 블랙잭 등 경쟁 상태를 배제하기 위해 결정적 상태로 강제 재지정
+    r.clearTimer()
+    r.phase = 'acting'
+    r.currentSeat = 0
+    r.dealerHidden = true
+    r.dealerCards = [
+      { rank: '10', suit: 'S', code: '10S' },
+      { rank: '5', suit: 'H', code: '5H' },
+    ] // 15, 이후 딜러가 1장 더 뽑아 17로 정지
+    r.seats[0].hands = [{
+      cards: [
+        { rank: '8', suit: 'C', code: '8C' },
+        { rank: '8', suit: 'H', code: '8H' },
+      ],
+      doubled: false, surrendered: false, done: false, fromSplit: false,
+    }]
+    r.seats[0].activeHand = 0
+    r.shoe = [
+      { rank: '9', suit: 'D', code: '9D' }, // 두 번째 drawSafe 호출(핸드1)에 사용
+      { rank: '9', suit: 'S', code: '9S' }, // 첫 번째 drawSafe 호출(핸드0)에 사용
+    ]
+
+    const balAfterBet = db.prepare('SELECT balance FROM users WHERE id = ?').get(u1).balance
+    const res = r.action(u1, 'split')
+    expect(res.ok).toBe(true)
+    expect(db.prepare('SELECT balance FROM users WHERE id = ?').get(u1).balance).toBe(balAfterBet - 1000) // 추가 스테이크 차감
+    expect(r.seats[0].hands.length).toBe(2)
+    expect(r.seats[0].hands[0].fromSplit).toBe(true)
+    expect(r.seats[0].hands[1].fromSplit).toBe(true)
+    expect(r.seats[0].hands[0].cards.length).toBe(2)
+    expect(r.seats[0].hands[1].cards.length).toBe(2)
+    // 두 핸드 모두 8+9=17 (딜러가 1장 더 뽑도록 준비)
+    r.shoe = [{ rank: '2', suit: 'C', code: '2C' }]
+    r.action(u1, 'stand') // 핸드0 완료 → 핸드1 턴
+    r.action(u1, 'stand') // 핸드1 완료 → dealerPhase (딜러 15 → 2C 드로우 → 17)
+    expect(r.snapshot().phase).toBe('dealer')
+
+    t.fire() // settleRound
+    // 딜러 17, 두 핸드 모두 17 → 푸시(원금 반환) × 2
+    expect(r.seats[0].hands[0].result.outcome).toBe('push')
+    expect(r.seats[0].hands[1].result.outcome).toBe('push')
+    const finalBal = db.prepare('SELECT balance FROM users WHERE id = ?').get(u1).balance
+    expect(finalBal).toBe(balAfterBet - 1000 + 2000) // 스테이크 2000 전액 반환(푸시)
+  })
+
+  it('서렌더하면 베팅의 절반이 즉시 반환된다', () => {
+    const r = makeRunner()
+    r.sit(u1, 'p1', 0)
+    r.placeBet(u1, 999) // 홀수 베팅으로 floor() 동작 확인
+    t.fire() // 딜링 → acting
+    // 자연 블랙잭 등 경쟁 상태를 배제하기 위해 결정적 상태로 강제 재지정
+    r.clearTimer()
+    r.phase = 'acting'
+    r.currentSeat = 0
+    r.dealerHidden = true
+    r.dealerCards = [
+      { rank: '10', suit: 'S', code: '10S' },
+      { rank: '9', suit: 'H', code: '9H' },
+    ]
+    r.seats[0].hands = [{
+      cards: [
+        { rank: '9', suit: 'C', code: '9C' },
+        { rank: '7', suit: 'C', code: '7C' },
+      ],
+      doubled: false, surrendered: false, done: false, fromSplit: false,
+    }]
+    r.seats[0].activeHand = 0
+
+    const balAfterBet = db.prepare('SELECT balance FROM users WHERE id = ?').get(u1).balance
+    const res = r.action(u1, 'surrender')
+    expect(res.ok).toBe(true)
+    expect(r.seats[0].hands[0].surrendered).toBe(true)
+    expect(r.seats[0].hands[0].done).toBe(true)
+    expect(r.snapshot().phase).toBe('dealer') // 유일한 좌석이므로 즉시 딜러 페이즈로
+
+    t.fire() // settleRound
+    expect(r.seats[0].hands[0].result.outcome).toBe('surrender')
+    expect(r.seats[0].hands[0].result.payout).toBe(Math.floor(999 / 2)) // 499
+    const finalBal = db.prepare('SELECT balance FROM users WHERE id = ?').get(u1).balance
+    expect(finalBal).toBe(balAfterBet + Math.floor(999 / 2))
+  })
 })

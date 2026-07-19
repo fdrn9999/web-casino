@@ -66,6 +66,12 @@ export class BlackjackRunner {
     this.phaseEndsAt = null
   }
 
+  // 라운드 도중 슈가 소진되는 병적인 경우(장기 라운드) 대비: 필요 시 즉시 재구성 후 드로우.
+  drawSafe() {
+    if (this.shoe.length === 0) this.shoe = buildShoe(this.rules_.decks, this.rng)
+    return drawCard(this.shoe)
+  }
+
   snapshot() {
     const r = this.rules_ ?? this.rules()
     return {
@@ -108,6 +114,7 @@ export class BlackjackRunner {
 
   // ── 착석/이탈 ─────────────────────────────────────────
   sit(userId, nickname, seatIdx) {
+    if (this.stopped) return { error: '테이블이 종료되었습니다.' }
     if (!Number.isInteger(seatIdx) || seatIdx < 0 || seatIdx >= SEAT_COUNT) return { error: '잘못된 좌석입니다.' }
     if (this.seats[seatIdx]) return { error: '이미 다른 플레이어가 앉아 있습니다.' }
     if (this.seatOf(userId) !== -1) return { error: '이미 착석 중입니다.' }
@@ -122,7 +129,7 @@ export class BlackjackRunner {
     const idx = this.seatOf(userId)
     if (idx === -1) return { error: '착석 중이 아닙니다.' }
     const seat = this.seats[idx]
-    const inRound = seat.bet > 0 && ['acting', 'dealer', 'result'].includes(this.phase)
+    const inRound = seat.bet > 0 && ['betting', 'acting', 'dealer', 'result'].includes(this.phase)
     if (inRound) {
       seat.leaving = true
       if (this.phase === 'acting' && this.currentSeat === idx) this.autoStand()
@@ -141,6 +148,7 @@ export class BlackjackRunner {
 
   // ── 베팅 ──────────────────────────────────────────────
   placeBet(userId, amount) {
+    if (this.stopped) return { error: '테이블이 종료되었습니다.' }
     if (this.phase !== 'betting') return { error: '지금은 베팅 시간이 아닙니다.' }
     const idx = this.seatOf(userId)
     if (idx === -1) return { error: '먼저 좌석에 앉아 주세요.' }
@@ -206,13 +214,16 @@ export class BlackjackRunner {
     if (this.shoe.length < needed) this.shoe = buildShoe(this.rules_.decks, this.rng)
     // 딜링: 각 좌석 2장, 딜러 2장(2번째 히든)
     for (const seat of bettingSeats) {
-      seat.hands = [{ cards: [drawCard(this.shoe), drawCard(this.shoe)], doubled: false, surrendered: false, done: false, fromSplit: false }]
+      seat.hands = [{ cards: [this.drawSafe(), this.drawSafe()], doubled: false, surrendered: false, done: false, fromSplit: false }]
       seat.activeHand = 0
     }
-    this.dealerCards = [drawCard(this.shoe), drawCard(this.shoe)]
+    this.dealerCards = [this.drawSafe(), this.drawSafe()]
     this.dealerHidden = true
     // 딜러 블랙잭이면 즉시 공개·정산
     if (isBlackjack(this.dealerCards)) {
+      for (const seat of bettingSeats) {
+        for (const hand of seat.hands) hand.done = true
+      }
       this.phase = 'dealer'
       this.dealerHidden = false
       this.broadcast()
@@ -262,6 +273,7 @@ export class BlackjackRunner {
   }
 
   action(userId, move) {
+    if (this.stopped) return { error: '테이블이 종료되었습니다.' }
     const cur = this.currentHand(userId)
     if (!cur) return { error: '지금은 행동할 수 없습니다.' }
     const { seat, hand } = cur
@@ -269,7 +281,7 @@ export class BlackjackRunner {
     const firstAction = hand.cards.length === 2 && !hand.doubled
 
     if (move === 'hit') {
-      hand.cards.push(drawCard(this.shoe))
+      hand.cards.push(this.drawSafe())
       if (handValue(hand.cards).total >= 21) hand.done = true
     } else if (move === 'stand') {
       hand.done = true
@@ -284,7 +296,7 @@ export class BlackjackRunner {
       }
       seat.staked += extra
       hand.doubled = true
-      hand.cards.push(drawCard(this.shoe))
+      hand.cards.push(this.drawSafe())
       hand.done = true
     } else if (move === 'split') {
       if (!r.splitAllowed || seat.hands.length > 1 || !firstAction) return { error: '지금은 스플릿할 수 없습니다.' }
@@ -298,8 +310,8 @@ export class BlackjackRunner {
       seat.staked += seat.bet
       const [c1, c2] = hand.cards
       seat.hands = [
-        { cards: [c1, drawCard(this.shoe)], doubled: false, surrendered: false, done: false, fromSplit: true },
-        { cards: [c2, drawCard(this.shoe)], doubled: false, surrendered: false, done: false, fromSplit: true },
+        { cards: [c1, this.drawSafe()], doubled: false, surrendered: false, done: false, fromSplit: true },
+        { cards: [c2, this.drawSafe()], doubled: false, surrendered: false, done: false, fromSplit: true },
       ]
       seat.activeHand = 0
     } else if (move === 'surrender') {
@@ -326,14 +338,13 @@ export class BlackjackRunner {
   dealerPhase() {
     this.phase = 'dealer'
     this.currentSeat = -1
-    this.clearTimer()
     this.dealerHidden = false
     const anyLive = this.seats.some(
       (s) => s?.bet > 0 && s.hands.some((h) => !h.surrendered && !isBust(h.cards))
     )
     if (anyLive) {
       while (dealerShouldHit(this.dealerCards, this.rules_.hitSoft17)) {
-        this.dealerCards.push(drawCard(this.shoe))
+        this.dealerCards.push(this.drawSafe())
       }
     }
     this.broadcast()
