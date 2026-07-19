@@ -1042,7 +1042,7 @@ export class BlackjackRunner {
     const idx = this.seatOf(userId)
     if (idx === -1) return { error: '착석 중이 아닙니다.' }
     const seat = this.seats[idx]
-    const inRound = seat.bet > 0 && ['acting', 'dealer', 'result'].includes(this.phase)
+    const inRound = seat.bet > 0 && ['betting', 'acting', 'dealer', 'result'].includes(this.phase)
     if (inRound) {
       seat.leaving = true
       if (this.phase === 'acting' && this.currentSeat === idx) this.autoStand()
