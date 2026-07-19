@@ -93,3 +93,4 @@
 
 ## P6 (통계·마이페이지·마무리)
 - Task 1: complete (commits 996e39b..dc41607, review approved, 재실행 94/94) — 관리자 통계 API
+- Task 2: complete (commits 68a8ee9..b8c1e09, review clean, 무결점) — 마이페이지 손익 API, 96/96
