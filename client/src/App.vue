@@ -1,9 +1,11 @@
 <script setup>
 import { RouterView, RouterLink, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
+import { useSound } from './composables/useSound'
 
 const auth = useAuthStore()
 const router = useRouter()
+const { muted, toggleMute } = useSound()
 
 function logout() {
   auth.logout()
@@ -24,6 +26,9 @@ function logout() {
           💰 {{ (auth.user?.balance ?? 0).toLocaleString() }} 칩
         </span>
         <span class="text-sm text-emerald-200">{{ auth.user?.nickname }}</span>
+        <button class="text-lg" :title="muted ? '소리 켜기' : '소리 끄기'" @click="toggleMute">
+          {{ muted ? '🔇' : '🔊' }}
+        </button>
         <button class="text-sm text-emerald-300 hover:text-amber-300" @click="logout">로그아웃</button>
       </div>
     </header>
