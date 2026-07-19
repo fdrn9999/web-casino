@@ -47,7 +47,9 @@ let rafId = null
 let lastTs = 0
 let unmounted = false
 let autoSpinTimer = null
+let autoSpinLoopRunning = false
 const pendingTimeouts = new Set()
+const pendingWaitResolvers = new Set()
 
 function setReelEl(el, i) {
   reelWindowEls[i] = el
@@ -55,11 +57,18 @@ function setReelEl(el, i) {
 
 function wait(ms) {
   return new Promise((resolve) => {
-    const id = setTimeout(() => {
+    let id
+    // Tracked alongside reelResolvers/hardStopReels: onUnmounted settles any
+    // still-pending waits so an awaiting doSpin/stopReelsSequentially chain
+    // unwinds instead of hanging forever once the timer is cleared.
+    const settle = () => {
       pendingTimeouts.delete(id)
+      pendingWaitResolvers.delete(settle)
       resolve()
-    }, ms)
+    }
+    id = setTimeout(settle, ms)
     pendingTimeouts.add(id)
+    pendingWaitResolvers.add(settle)
   })
 }
 
@@ -133,7 +142,7 @@ function startReelSpin() {
 function stopReel(i, symbol) {
   return new Promise((resolve) => {
     const el = reelWindowEls[i]
-    const itemHeight = el ? el.clientHeight : itemHeights[i] || 96
+    const itemHeight = Math.max(el ? el.clientHeight : itemHeights[i] || 96, 1)
     itemHeights[i] = itemHeight
     const currentPos = reelY.value[i]
     const currentIndex = Math.abs(currentPos) / itemHeight
@@ -192,6 +201,10 @@ onUnmounted(() => {
   }
   pendingTimeouts.forEach((id) => clearTimeout(id))
   pendingTimeouts.clear()
+  // Settle any wait() promises still pending so awaiting doSpin/
+  // stopReelsSequentially chains unwind instead of hanging forever.
+  ;[...pendingWaitResolvers].forEach((settle) => settle())
+  pendingWaitResolvers.clear()
   hardStopReels()
 })
 
@@ -225,13 +238,23 @@ async function doSpin() {
     else if (res.payout > 0) sfx.win()
     else sfx.lose()
     spinning.value = false
+    resumeAutoSpinIfNeeded()
     return res
   } catch (e) {
     hardStopReels()
     error.value = e.message
     spinning.value = false
+    resumeAutoSpinIfNeeded()
     return null
   }
+}
+
+// If auto-spin was toggled on while a manual spin was still in flight,
+// autoSpinLoop() returned immediately (its `spinning.value` guard fired)
+// without scheduling anything. Once this spin finishes, resume the loop
+// here — but only if no loop is already active, so we never double-spin.
+function resumeAutoSpinIfNeeded() {
+  if (autoSpin.value && !autoSpinLoopRunning) autoSpinLoop()
 }
 
 function toggleAutoSpin() {
@@ -249,27 +272,42 @@ function toggleAutoSpin() {
 }
 
 async function autoSpinLoop() {
-  if (unmounted || !autoSpin.value || spinning.value) return
+  // autoSpinLoopRunning ensures exactly one active loop chain at a time. If
+  // this call fires while a spin is already in flight (e.g. toggled on
+  // mid-manual-spin), it returns here and resumeAutoSpinIfNeeded() restarts
+  // the loop once that spin completes — it never double-schedules, because
+  // the flag stays true for the whole lifetime of the active chain.
+  if (unmounted || !autoSpin.value || spinning.value || autoSpinLoopRunning) return
+  autoSpinLoopRunning = true
   if (bet.value > (auth.user?.balance ?? 0)) {
     autoSpin.value = false
     error.value = '칩이 부족합니다.'
+    autoSpinLoopRunning = false
     return
   }
   const res = await doSpin()
-  if (unmounted || !autoSpin.value) return
+  if (unmounted || !autoSpin.value) {
+    autoSpinLoopRunning = false
+    return
+  }
   if (!res) {
     autoSpin.value = false // doSpin already populated error.value
+    autoSpinLoopRunning = false
     return
   }
   if (res.jackpotWon) {
     autoSpin.value = false // stop so the user can see the celebration
+    autoSpinLoopRunning = false
     return
   }
-  autoSpinTimer = setTimeout(() => {
+  const timerId = setTimeout(() => {
     autoSpinTimer = null
+    pendingTimeouts.delete(timerId)
+    autoSpinLoopRunning = false
     autoSpinLoop()
   }, AUTO_SPIN_DELAY)
-  pendingTimeouts.add(autoSpinTimer)
+  autoSpinTimer = timerId
+  pendingTimeouts.add(timerId)
 }
 </script>
 
