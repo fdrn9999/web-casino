@@ -58,6 +58,10 @@
 - security: 카드/슬롯 기본 RNG를 crypto CSPRNG로 (602616e) — CWE-338 대응(가상머니라 금전위험 없으나 편향제거)
 - Task 3: complete (commits a6ea24f..b849763, review approved) — 서버 56/56
 - Task 4: complete (commits 620b888..94f5314, review approved+fix) — 서버 59/59, vacuous 404 테스트 강화
+- Task 5: complete (commits 0246b4a..0abb6de) — BlackjackRunner, 서버 70/70
+  - Critical fix: 베팅중 이탈 칩소멸(inRound에 betting 누락) → 수정+회귀테스트, 재리뷰 승인
+  - Important fix: 슈 언더플로 drawSafe, stop후 사용 가드; 테스트 결정화(딜러BJ flaky 제거)
+  - [최종triage] Minor: dealer-BJ done 플래그(수정됨), drawSafe reshuffle는 라운드중 발생 가능(허용)
   - [최종triage] Minor(브리프): PUT 없는id 400(404여야), non-string name→500
 
 ## 사용자 추가 요청 (mid-flight)
