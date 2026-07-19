@@ -2,6 +2,8 @@ import { Server } from 'socket.io'
 import { verifyToken } from '../middleware/auth.js'
 import { walletEvents } from '../services/wallet.js'
 import { jackpotEvents } from '../services/jackpot.js'
+import { attachGameNamespace } from './game-namespace.js'
+import { GAME_KEYS } from '../services/tables.js'
 
 export function createSocketServer(httpServer, db) {
   const io = new Server(httpServer)
@@ -28,6 +30,8 @@ export function createSocketServer(httpServer, db) {
 
   jackpotEvents.on('pool', ({ pool }) => io.emit('jackpot:pool', { pool }))
   jackpotEvents.on('won', ({ nickname, amount }) => io.emit('jackpot:won', { nickname, amount }))
+
+  for (const gameKey of GAME_KEYS) attachGameNamespace(io, db, gameKey)
 
   return io
 }
