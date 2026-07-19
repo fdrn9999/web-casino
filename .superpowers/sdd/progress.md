@@ -78,3 +78,6 @@
   - 리뷰 2회: Important 2건(토글레이스·wait정리) + 재리뷰 Important 1건(토글오프 플래그) 모두 fix
   - 라이브 브라우저 검증(릴 스크롤·오토스핀 반복·잔액부족 자동정지). 잭팟-정지는 코드검증.
   - Plan7 Task4는 릴 재구현 스킵하도록 문서 조정(잭팟 풀스크린 연출만 남김)
+
+## P5 (룰렛·바카라)
+- Task 1: complete (commits 54740bd..d506e4e, review clean, 무결점) — bet:place 일반화, 73/73
