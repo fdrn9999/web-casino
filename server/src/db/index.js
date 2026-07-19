@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
   total_won INTEGER NOT NULL DEFAULT 0,
   last_daily_bonus_at TEXT,
   last_relief_at TEXT,
+  attendance_streak INTEGER NOT NULL DEFAULT 0,
+  last_attendance TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS transactions (
@@ -81,11 +83,18 @@ CREATE TABLE IF NOT EXISTS jackpot (
 );
 `
 
+export function migrate(db) {
+  const cols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name)
+  if (!cols.includes('attendance_streak')) db.exec("ALTER TABLE users ADD COLUMN attendance_streak INTEGER NOT NULL DEFAULT 0")
+  if (!cols.includes('last_attendance')) db.exec("ALTER TABLE users ADD COLUMN last_attendance TEXT")
+}
+
 export function createDb(filename = ':memory:') {
   const db = new Database(filename)
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   db.exec(SCHEMA)
+  migrate(db)
   return db
 }
 

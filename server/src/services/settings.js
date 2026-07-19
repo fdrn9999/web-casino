@@ -5,6 +5,7 @@ export const DEFAULT_SETTINGS = {
     reliefAmount: 3000,
     reliefThreshold: 100,
     reliefCooldownMin: 5,
+    attendanceRewards: [1000, 1500, 2000, 2500, 3000, 4000, 5000],
   },
   slots: {
     minBet: 100,
