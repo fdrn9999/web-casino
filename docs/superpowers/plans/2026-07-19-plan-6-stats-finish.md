@@ -1,4 +1,4 @@
-# 플랜 6/6 — 통계 대시보드 · 마이페이지 · 휴식 알림 · 마무리 구현 계획
+# 플랜 6/7 — 통계 대시보드 · 마이페이지 · 휴식 알림 · 마무리 구현 계획
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

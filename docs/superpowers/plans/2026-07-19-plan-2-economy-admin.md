@@ -1,4 +1,4 @@
-# 플랜 2/6 — 이코노미 · 관리자 유저관리 · 공지 구현 계획
+# 플랜 2/7 — 이코노미 · 관리자 유저관리 · 공지 구현 계획
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

@@ -1,4 +1,4 @@
-# 플랜 4/6 — 테이블 CRUD · 라운드 루프 프레임워크 · 블랙잭 구현 계획
+# 플랜 4/7 — 테이블 CRUD · 라운드 루프 프레임워크 · 블랙잭 구현 계획
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

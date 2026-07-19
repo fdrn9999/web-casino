@@ -1,4 +1,4 @@
-# 플랜 3/6 — 슬롯머신 · 프로그레시브 잭팟 · 사운드 시스템 구현 계획
+# 플랜 3/7 — 슬롯머신 · 프로그레시브 잭팟 · 사운드 시스템 구현 계획
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
