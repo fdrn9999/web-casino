@@ -31,6 +31,8 @@
 - Task 3: complete (commits bdcee68..9e73612, review clean, 무결점) — 서버 30/30
 - Task 4: complete (commits 2b33d4b..ffbea14, review approved+fix) — Important(ReliefModal 에러처리) fix 적용, 클라 빌드 성공
 - Task 5: complete (commits b06ee96..460a5f4, review approved) — 클라 빌드 성공, 라우터 가드 async+fetchMe 검증
+- Task 6: 통합 검증 통과 (서버 30/30, 클라 빌드, 라이브 API: 보너스·지급·차단·공지 전부 정상; 브라우저 렌더 확인). 참고: Chrome 도구 클릭 플레이키(read_page 기반 검증)
+- **Plan 2 완료**
   - [최종triage] Minor: 거래 type snake_case 노출(한국어화), main.js+가드 fetchMe 레이스(무해)
   - [최종triage] Minor: 구제 임계값 100 클라 하드코딩(설정드리프트), 쿨다운0후 인터벌 지속, 출석버튼 미비활성
   - [최종triage] Minor: confiscate 'all' 0잔액시 400(no-op가 맞음), non-string reason→500(400이어야) — 브리프 유래
