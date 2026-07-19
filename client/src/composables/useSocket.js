@@ -4,10 +4,17 @@ import { router } from '../router'
 
 let socket = null
 
+const noticeListeners = new Set()
+export function onNotice(fn) {
+  noticeListeners.add(fn)
+  return () => noticeListeners.delete(fn)
+}
+
 export function connectSocket() {
   if (socket) return socket
   const auth = useAuthStore()
   socket = io({ auth: { token: auth.token } })
+  socket.on('notice:new', (notice) => noticeListeners.forEach((fn) => fn(notice)))
   socket.on('balance:update', ({ balance }) => auth.setBalance(balance))
   socket.on('session:banned', () => {
     auth.logout()

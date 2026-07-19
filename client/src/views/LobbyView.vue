@@ -1,6 +1,25 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { connectSocket } from '../composables/useSocket'
+import NoticeBoard from '../components/NoticeBoard.vue'
+import ReliefModal from '../components/ReliefModal.vue'
+import { api } from '../lib/api'
+import { useAuthStore } from '../stores/auth'
+
+const auth = useAuthStore()
+const reliefModal = ref(null)
+const bonusMsg = ref('')
+
+async function claimDaily() {
+  try {
+    const res = await api('/bonus/daily', { method: 'POST' })
+    auth.setBalance(res.balance)
+    bonusMsg.value = `출석 보너스 ${res.amount.toLocaleString()}칩 지급!`
+  } catch (e) {
+    bonusMsg.value = e.message
+  }
+  setTimeout(() => (bonusMsg.value = ''), 3000)
+}
 
 const games = [
   { key: 'blackjack', name: '블랙잭', emoji: '🃏', desc: '딜러를 이겨라 (7석 라이브 테이블)' },
@@ -14,9 +33,16 @@ onMounted(() => connectSocket())
 
 <template>
   <div class="mx-auto max-w-5xl space-y-6">
-    <section class="rounded-xl border border-emerald-800 bg-emerald-900/40 p-4 text-sm text-emerald-300">
-      📢 공지사항 영역 (플랜 2에서 구현)
-    </section>
+    <div class="flex flex-wrap items-center gap-2">
+      <button class="rounded-lg bg-amber-500/90 px-3 py-1.5 text-sm font-bold text-emerald-950 hover:bg-amber-400"
+        @click="claimDaily">🎁 출석 보너스</button>
+      <button v-if="(auth.user?.balance ?? 0) < 100"
+        class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-red-500"
+        @click="reliefModal.show()">⚠️ 파산 구제 신청</button>
+      <span v-if="bonusMsg" class="text-sm text-amber-300">{{ bonusMsg }}</span>
+    </div>
+    <NoticeBoard />
+    <ReliefModal ref="reliefModal" />
 
     <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div
