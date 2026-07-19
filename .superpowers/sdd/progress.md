@@ -62,6 +62,9 @@
 - Task 6: complete (commits f305286..6a3b892, review approved, 독립재실행 72/72) — 게임 네임스페이스 소켓
 - Task 7: complete (commits c20c250..afb4173, review approved) — 카드 SVG 54개, 매핑 52코드 검증, 클라 빌드
 - Task 8: complete (commits 5bea17b..bb908c7, review+fix) — 테이블목록/관리자 테이블·규칙 화면, Important(테이블 수정UI) fix 적용
+- Task 9: complete (commits 18657b4..109d12a, review+fix) — BlackjackView, 클라 빌드 성공
+  - Critical fix: seat:leave arity 서버크래시 → 정규화+회귀테스트(73/73), 전역 예외가드, connect_error 피드백
+  - [최종triage] Minor: 액션 버튼 in-flight 가드 없음(서버가 거부, UX노이즈)
   - [최종triage] Minor: CardImg srcFor 2회호출·props 미사용(P4T7 잔여)
   - Critical fix: 베팅중 이탈 칩소멸(inRound에 betting 누락) → 수정+회귀테스트, 재리뷰 승인
   - Important fix: 슈 언더플로 drawSafe, stop후 사용 가드; 테스트 결정화(딜러BJ flaky 제거)
