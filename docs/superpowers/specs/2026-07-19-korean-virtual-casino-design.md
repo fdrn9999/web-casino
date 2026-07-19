@@ -44,7 +44,7 @@ Web-Casino-Practice/
 └── docs/superpowers/specs/
 ```
 
-- 개발: Vite dev 서버가 `/api`·`/socket.io`를 Express(포트 3000)로 프록시.
+- 개발: Vite dev 서버가 `/api`·`/socket.io`를 Express(포트 4000)로 프록시.
 - 배포(로컬 실행): Express가 `client/dist` 정적 서빙.
 
 ## 3. 데이터 모델 (SQLite)

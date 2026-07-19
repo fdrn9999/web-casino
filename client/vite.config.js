@@ -6,8 +6,8 @@ export default defineConfig({
   plugins: [vue(), tailwindcss()],
   server: {
     proxy: {
-      '/api': 'http://localhost:3000',
-      '/socket.io': { target: 'http://localhost:3000', ws: true },
+      '/api': 'http://localhost:4000',
+      '/socket.io': { target: 'http://localhost:4000', ws: true },
     },
   },
 })

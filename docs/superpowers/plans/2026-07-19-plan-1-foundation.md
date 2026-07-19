@@ -16,7 +16,7 @@
 - 전 페이지 하단 고정 문구(verbatim): `본 사이트는 가상머니 전용입니다. 실제 도박은 오락이 아닌 손실이며, 중독은 질병입니다.`
 - 가상화폐 단위 명칭: **칩**. 가입 지급 10,000칩(설정 가능 구조).
 - 반응형: 모바일(~640px)·PC 모두 지원, 가로 스크롤 금지.
-- 서버는 ESM(`"type": "module"`). 서버 포트 3000, Vite 개발 포트 5173(프록시로 `/api`, `/socket.io` → 3000).
+- 서버는 ESM(`"type": "module"`). 서버 포트 4000, Vite 개발 포트 5173(프록시로 `/api`, `/socket.io` → 4000).
 - 테스트 DB는 `:memory:`, 실 DB는 `server/data/casino.db`(gitignore).
 - 커밋은 태스크 단위로 자주. 테스트가 빨간 상태로 커밋 금지.
 
@@ -31,7 +31,7 @@
 
 **Interfaces:**
 - Consumes: 없음 (첫 태스크)
-- Produces: `npm run dev`(루트) → 서버(3000)+클라(5173) 동시 기동, Vite 프록시 `/api`·`/socket.io` → `http://localhost:3000`
+- Produces: `npm run dev`(루트) → 서버(4000)+클라(5173) 동시 기동, Vite 프록시 `/api`·`/socket.io` → `http://localhost:4000`
 
 - [ ] **Step 1: 루트 파일 작성**
 
@@ -68,7 +68,7 @@ server/data/
 npm install
 npm --prefix server install
 npm --prefix client install
-npm run dev   # 서버 :3000 + 클라이언트 :5173
+npm run dev   # 서버 :4000 + 클라이언트 :5173
 ​```
 접속: http://localhost:5173 (기본 관리자: admin / admin1234 — .env로 변경 가능)
 ```
@@ -100,7 +100,7 @@ Expected: 의존성 설치 성공 (better-sqlite3는 Node 24용 프리빌드 바
 
 `server/.env.example`:
 ```
-PORT=3000
+PORT=4000
 JWT_SECRET=change-me-in-production
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin1234
@@ -114,7 +114,7 @@ import express from 'express'
 
 const app = express()
 app.get('/api/health', (req, res) => res.json({ ok: true }))
-app.listen(process.env.PORT || 3000, () => console.log('server on :3000'))
+app.listen(process.env.PORT || 4000, () => console.log('server on :4000'))
 ```
 
 - [ ] **Step 4: 클라이언트 스캐폴드**
@@ -133,8 +133,8 @@ export default defineConfig({
   plugins: [vue(), tailwindcss()],
   server: {
     proxy: {
-      '/api': 'http://localhost:3000',
-      '/socket.io': { target: 'http://localhost:3000', ws: true },
+      '/api': 'http://localhost:4000',
+      '/socket.io': { target: 'http://localhost:4000', ws: true },
     },
   },
 })
@@ -812,7 +812,7 @@ git commit -m "feat: JWT 인증(가입/로그인/me) 및 관리자 시드"
   - `createSocketServer(httpServer, db) → io` — 핸드셰이크 `auth.token` JWT 검증(실패·차단 시 거부), 접속 시 `user:{id}` room 참가
   - 서버 → 클라 이벤트: `balance:update { balance }` (walletEvents 구독)
   - `disconnectUser(io, userId)` — 해당 유저의 모든 소켓 강제 종료 전 `session:banned { reason }` 발송 (플랜 2의 차단 기능에서 사용)
-  - `server/src/index.js` — dotenv 로드, `getDb()` + `ensureAdmin`, http 서버에 app+io 결합, `PORT`(기본 3000) listen
+  - `server/src/index.js` — dotenv 로드, `getDb()` + `ensureAdmin`, http 서버에 app+io 결합, `PORT`(기본 4000) listen
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
@@ -930,7 +930,7 @@ const app = createApp(db)
 const httpServer = createServer(app)
 export const io = createSocketServer(httpServer, db)
 
-const port = process.env.PORT || 3000
+const port = process.env.PORT || 4000
 httpServer.listen(port, () => console.log(`베가스 서버 기동: http://localhost:${port}`))
 ```
 
@@ -1391,7 +1391,7 @@ Expected: PASS (18 tests)
 - [ ] **Step 2: 개발 서버 기동**
 
 Run: `npm run dev`
-Expected: 서버 `베가스 서버 기동: http://localhost:3000` + `[bootstrap] 관리자 계정 생성: admin` 출력, Vite 5173 기동
+Expected: 서버 `베가스 서버 기동: http://localhost:4000` + `[bootstrap] 관리자 계정 생성: admin` 출력, Vite 5173 기동
 
 - [ ] **Step 3: 브라우저 검증 (실제 렌더 관찰 — 정적 확인으로 대체 금지)**
 

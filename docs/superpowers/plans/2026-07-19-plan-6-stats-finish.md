@@ -830,13 +830,13 @@ import fs from 'node:fs'
 ## 개발 실행
 ​```
 npm install && npm --prefix server install && npm --prefix client install
-npm run dev      # 서버 :3000 + 클라이언트 :5173 → http://localhost:5173
+npm run dev      # 서버 :4000 + 클라이언트 :5173 → http://localhost:5173
 ​```
 
 ## 프로덕션 실행
 ​```
 npm run build    # client/dist 생성
-npm start        # http://localhost:3000 (정적 서빙 포함)
+npm start        # http://localhost:4000 (정적 서빙 포함)
 ​```
 
 ## 계정
@@ -856,7 +856,7 @@ npm test         # 서버 게임 로직·API 단위/통합 테스트 (Vitest)
 
 - [ ] **Step 3: 프로덕션 기동 확인 후 Commit**
 
-Run: `npm run build` 후 `npm start` → 브라우저 `http://localhost:3000` 접속
+Run: `npm run build` 후 `npm start` → 브라우저 `http://localhost:4000` 접속
 Expected: 로그인 화면 렌더, 로그인·로비·소켓 정상 (확인 후 종료)
 
 ```bash

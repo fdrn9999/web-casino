@@ -8,6 +8,6 @@
 npm install
 npm --prefix server install
 npm --prefix client install
-npm run dev   # 서버 :3000 + 클라이언트 :5173
+npm run dev   # 서버 :4000 + 클라이언트 :5173
 ```
 접속: http://localhost:5173 (기본 관리자: admin / admin1234 — .env로 변경 가능)
