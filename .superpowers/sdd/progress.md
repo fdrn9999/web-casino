@@ -56,3 +56,9 @@
 - Task 2: complete (commits 19fc6ec..d5e3496, review approved, 독립재검증 51/51)
   - [최종triage] Minor: fromSplit 테스트 없음(수동검증 정확), doubled 파라미터 미사용(인터페이스 규약)
 - security: 카드/슬롯 기본 RNG를 crypto CSPRNG로 (602616e) — CWE-338 대응(가상머니라 금전위험 없으나 편향제거)
+
+## 사용자 추가 요청 (mid-flight)
+- 슬롯 세로 스크롤 릴 연출 + 오토스핀: complete (커밋 dadcd9c→d0b5c86→8fde452)
+  - 리뷰 2회: Important 2건(토글레이스·wait정리) + 재리뷰 Important 1건(토글오프 플래그) 모두 fix
+  - 라이브 브라우저 검증(릴 스크롤·오토스핀 반복·잔액부족 자동정지). 잭팟-정지는 코드검증.
+  - Plan7 Task4는 릴 재구현 스킵하도록 문서 조정(잭팟 풀스크린 연출만 남김)
