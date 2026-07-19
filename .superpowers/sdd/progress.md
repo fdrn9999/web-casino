@@ -106,3 +106,4 @@
   - [최종triage] Minor(반복): 여러 뷰 로딩/에러 상태 UI 없음(API 실패시 빈화면)
 
 ## P7 (이펙트·UX)
+- Task 1: complete (commits aca1f91..7d30f05, review+fix) — 이펙트 기반, rAF/타이머 정리 fix
