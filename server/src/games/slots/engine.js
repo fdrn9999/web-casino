@@ -1,3 +1,5 @@
+import { randomInt } from 'node:crypto'
+
 export const SYMBOLS = ['🍒', '🍋', '🔔', '⭐', '7']
 
 export const REEL = [
@@ -17,8 +19,11 @@ export const PAYTABLE = [
   { match: ['🍒', '🍒', '*'], label: '체리 2개 1배', multiplier: 1 },
 ]
 
-export function spin(rng = Math.random) {
-  return [0, 1, 2].map(() => REEL[Math.floor(rng() * REEL.length)])
+// rng는 테스트 결정성 주입 seam. 미주입 시 CSPRNG(crypto.randomInt)로 편향 없이 릴을 뽑는다.
+export function spin(rng = null) {
+  return [0, 1, 2].map(() =>
+    REEL[rng ? Math.floor(rng() * REEL.length) : randomInt(0, REEL.length)]
+  )
 }
 
 export function evaluate(symbols, bet) {
