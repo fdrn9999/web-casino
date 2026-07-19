@@ -147,7 +147,8 @@ export class BlackjackRunner {
   }
 
   // ── 베팅 ──────────────────────────────────────────────
-  placeBet(userId, amount) {
+  placeBet(userId, payload) {
+    const amount = typeof payload === 'number' ? payload : payload?.amount
     if (this.stopped) return { error: '테이블이 종료되었습니다.' }
     if (this.phase !== 'betting') return { error: '지금은 베팅 시간이 아닙니다.' }
     const idx = this.seatOf(userId)

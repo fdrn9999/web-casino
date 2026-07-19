@@ -26,6 +26,7 @@ export function attachGameNamespace(io, db, gameKey) {
       if (!row || !r) return cb({ error: '입장할 수 없는 테이블입니다.' })
       socket.data.tableId = Number(tableId)
       socket.join(`table:${tableId}`)
+      r.onJoin?.(socket.data.userId, socket.data.nickname)
       cb({ state: r.snapshot() })
     })
 
@@ -40,9 +41,9 @@ export function attachGameNamespace(io, db, gameKey) {
       cb(r ? r.leave(socket.data.userId) : { error: '테이블에 먼저 입장하세요.' })
     })
 
-    socket.on('bet:place', ({ amount } = {}, cb = () => {}) => {
+    socket.on('bet:place', (payload = {}, cb = () => {}) => {
       const r = runner()
-      cb(r ? r.placeBet(socket.data.userId, amount) : { error: '테이블에 먼저 입장하세요.' })
+      cb(r ? r.placeBet(socket.data.userId, payload) : { error: '테이블에 먼저 입장하세요.' })
     })
 
     socket.on('action', ({ move } = {}, cb = () => {}) => {
