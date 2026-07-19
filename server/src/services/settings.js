@@ -25,6 +25,7 @@ export const DEFAULT_SETTINGS = {
     betSeconds: 20,
     turnSeconds: 15,
   },
+  roulette: { minBet: 100, maxBet: 10000, betSeconds: 20, spinSeconds: 5 },
 }
 
 export function getSettings(db, game) {
