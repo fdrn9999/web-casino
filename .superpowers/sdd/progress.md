@@ -90,3 +90,5 @@
 - **Plan 5 완료** (룰렛·바카라)
   - [최종triage] Minor: 마지막이탈시 orphaned rounds행(reconcile가 처리), 20베팅캡 미테스트
 - Task 1: complete (commits 54740bd..d506e4e, review clean, 무결점) — bet:place 일반화, 73/73
+
+## P6 (통계·마이페이지·마무리)
