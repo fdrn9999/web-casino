@@ -83,5 +83,6 @@
 - Task 2: complete (commits ef4b809..3f598c4, review clean, 무결점) — 룰렛 엔진, 78/78
 - Task 3: complete (commits 1212bf4..5610a2b, review approved, 재실행 자금흐름 안전) — RouletteRunner, 82/82
 - Task 4: complete (commits 5523a17..82fb2d0, review approved, 드로잉표 80셀 전수검증) — 바카라 엔진, 88/88
+- Task 5: complete (commits 88abe63..41b5bfc, review approved, 재실행+자금흐름 안전) — BaccaratRunner, 91/91
   - [최종triage] Minor: 마지막이탈시 orphaned rounds행(reconcile가 처리), 20베팅캡 미테스트
 - Task 1: complete (commits 54740bd..d506e4e, review clean, 무결점) — bet:place 일반화, 73/73
