@@ -8,6 +8,7 @@ const routes = [
   { path: '/slots', component: () => import('../views/SlotsView.vue'), meta: { requiresAuth: true } },
   { path: '/blackjack/:tableId', component: () => import('../views/BlackjackView.vue'), meta: { requiresAuth: true } },
   { path: '/roulette/:tableId', component: () => import('../views/RouletteView.vue'), meta: { requiresAuth: true } },
+  { path: '/baccarat/:tableId', component: () => import('../views/BaccaratView.vue'), meta: { requiresAuth: true } },
   {
     path: '/admin',
     component: () => import('../views/admin/AdminView.vue'),

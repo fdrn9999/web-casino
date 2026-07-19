@@ -26,7 +26,7 @@ async function claimDaily() {
 const games = [
   { key: 'blackjack', name: '블랙잭', emoji: '🃏', desc: '딜러를 이겨라 (7석 라이브 테이블)', tables: true },
   { key: 'roulette', name: '룰렛', emoji: '🎡', desc: '유러피언 룰렛 라이브 테이블', tables: true },
-  { key: 'baccarat', name: '바카라', emoji: '🀄', desc: '플레이어 vs 뱅커', tables: false },
+  { key: 'baccarat', name: '바카라', emoji: '🀄', desc: '플레이어 vs 뱅커', tables: true },
   { key: 'slots', name: '슬롯머신', emoji: '🎰', desc: '프로그레시브 잭팟에 도전', to: '/slots' },
 ]
 
