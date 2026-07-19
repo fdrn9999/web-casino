@@ -261,6 +261,9 @@ function toggleAutoSpin() {
   sfx.click()
   if (autoSpin.value) {
     autoSpin.value = false
+    // 딜레이 대기 중 정지 시 예약 타이머만 죽으므로, 루프 플래그도 함께 초기화해야
+    // 이후 재시작(토글 온)이 "이미 실행 중"으로 오인돼 멈추는 것을 막는다.
+    autoSpinLoopRunning = false
     if (autoSpinTimer) {
       clearTimeout(autoSpinTimer)
       autoSpinTimer = null
