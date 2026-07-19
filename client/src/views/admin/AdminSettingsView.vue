@@ -6,6 +6,7 @@ const GROUPS = [
   { key: 'economy', label: '이코노미' },
   { key: 'slots', label: '슬롯머신' },
   { key: 'blackjack', label: '블랙잭' },
+  { key: 'roulette', label: '룰렛' },
 ]
 
 const SETTING_LABELS = {
