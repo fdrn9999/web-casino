@@ -104,3 +104,5 @@
   - [최종triage] Minor: app.js dist 경로가 cwd 상대(npm start에선 정상, 다른 실행법이면 정적서빙 무음 비활성-fail safe)
   - Critical fix: 환불+종료표시 비원자적→라운드별 db.transaction 원자화(크래시시 이중환불 방지)
   - [최종triage] Minor(반복): 여러 뷰 로딩/에러 상태 UI 없음(API 실패시 빈화면)
+
+## P7 (이펙트·UX)
