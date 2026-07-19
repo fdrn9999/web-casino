@@ -41,4 +41,5 @@
 
 ## P3 (슬롯·잭팟·사운드)
 - Task 1: complete (commits 045aa82..8717afc, review approved) — 서버 33/33
+- Task 2: complete (commits 53e5a1d..c69b470, review clean, 무결점) — 서버 38/38
   - [최종triage] Minor(기존패턴): applyTransaction의 balance emit이 외부 트랜잭션 커밋 전 발행 가능(현재 무해)
