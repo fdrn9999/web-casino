@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import ConfettiBurst from './ConfettiBurst.vue'
 import { useCountUp } from '../composables/useCountUp'
 
@@ -24,6 +24,12 @@ function close() {
   document.documentElement.classList.remove('fx-shake')
   clearTimeout(timer)
 }
+// 언마운트 시 auto-close 타이머와 전역 fx-shake 클래스를 정리해, 재마운트된 새 연출의
+// 흔들림이 옛 타이머에 의해 조기 중단되지 않도록 한다.
+onUnmounted(() => {
+  clearTimeout(timer)
+  document.documentElement.classList.remove('fx-shake')
+})
 defineExpose({ celebrate })
 </script>
 
