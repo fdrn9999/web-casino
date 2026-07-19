@@ -127,6 +127,7 @@
 - **Plan 8 완료** (참고사이트 반영 4기능)
 
 ## 전체 완료: Plan 1~8 + 슬롯강화 + 보안RNG. 서버 118 테스트, 4게임 라이브 검증.
+- 최종 whole-branch 리뷰(opus): 자금단일경로·소켓보안·권한·상태머신 CONFIRMED clean. NEW Important 1건(차단이 게임소켓 미종료) → fix(2ec8056), 119/119. 18 Minor는 ACCEPTABLE.
   - [최종triage] Minor: TableChat v-for index key(front-trim시 패치 스멜, 무해)
   - [최종triage] Minor: RateLimiter Map 미정리(고유유저 누적, 스코프외)
   - [최종triage] Minor: 401 테스트 vacuous(라우터 자체 requireAuth는 존재)
