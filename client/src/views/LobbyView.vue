@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { connectSocket } from '../composables/useSocket'
 import NoticeBoard from '../components/NoticeBoard.vue'
 import ReliefModal from '../components/ReliefModal.vue'
+import AttendanceModal from '../components/AttendanceModal.vue'
 import JackpotWidget from '../components/JackpotWidget.vue'
 import TableList from '../components/TableList.vue'
 import { api } from '../lib/api'
@@ -10,6 +11,7 @@ import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const reliefModal = ref(null)
+const attendanceModal = ref(null)
 const bonusMsg = ref('')
 
 async function claimDaily() {
@@ -38,6 +40,8 @@ onMounted(() => connectSocket())
     <div class="flex flex-wrap items-center gap-2">
       <button class="rounded-lg bg-amber-500/90 px-3 py-1.5 text-sm font-bold text-emerald-950 hover:bg-amber-400"
         @click="claimDaily">🎁 출석 보너스</button>
+      <button class="rounded-lg bg-emerald-800 px-3 py-1.5 text-sm font-bold text-amber-300 hover:bg-emerald-700"
+        @click="attendanceModal.show()">📅 출석부</button>
       <button v-if="(auth.user?.balance ?? 0) < 100"
         class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-red-500"
         @click="reliefModal.show()">⚠️ 파산 구제 신청</button>
@@ -45,6 +49,7 @@ onMounted(() => connectSocket())
     </div>
     <NoticeBoard />
     <ReliefModal ref="reliefModal" />
+    <AttendanceModal ref="attendanceModal" />
 
     <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <component
