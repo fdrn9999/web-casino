@@ -1,0 +1,151 @@
+# 한국어 가상머니 라이브 카지노 — 설계 문서
+
+- 날짜: 2026-07-19
+- 참조: [OpenSourceCasino](https://github.com/LucasHazardous/OpenSourceCasino) (게임 로직·UX 참고), [playing-cards-assets](https://github.com/hayeah/playing-cards-assets) (카드 이미지, MIT)
+- 상태: 사용자 승인 대기
+
+## 1. 목적과 원칙
+
+교육·오락 목적의 **한국어 실시간 라이브 카지노** 웹사이트. 원칙:
+
+1. **현금 절대 금지.** 가상머니(원화 아님, 명칭: "칩") 전용. 결제·환전 관련 코드·UI를 일절 두지 않는다.
+2. **도박의 위험성 교육.** 경고 문구, 파산 구제 시 손실 직면 UI, 플레이 시간 알림을 제품의 1급 기능으로 취급한다.
+3. **서버 권위(server-authoritative).** 잔액·게임 결과·규칙은 모두 서버가 결정한다. 클라이언트는 표시와 입력만 담당한다.
+
+## 2. 기술 스택 및 프로젝트 구조
+
+| 영역 | 선택 |
+|---|---|
+| 프론트엔드 | Vue 3 + Vite + Tailwind CSS + Pinia + Vue Router |
+| 백엔드 | Node.js + Express (REST) + Socket.IO (실시간) |
+| DB | SQLite (`better-sqlite3`, 동기 API + 트랜잭션) |
+| 인증 | 아이디/비밀번호(bcrypt) + JWT |
+| 차트 | Chart.js |
+| 테스트 | Vitest (게임 로직 단위 테스트) |
+
+```
+Web-Casino-Practice/
+├── client/                  # Vue 3 앱
+│   ├── src/
+│   │   ├── views/           # 로비, 게임 4종, 로그인, 마이페이지, 공지, admin/*
+│   │   ├── components/      # 카드, 칩, 좌석, 타이머 링, 공지 배너, 잭팟 위젯 등
+│   │   ├── stores/          # auth, balance, table, notice (Pinia)
+│   │   ├── composables/     # useSocket, useSound
+│   │   └── assets/cards/    # playing-cards-assets SVG
+│   └── public/sounds/jackpot.mp3
+├── server/
+│   ├── src/
+│   │   ├── db/              # 스키마, 마이그레이션, 쿼리
+│   │   ├── routes/          # auth, notices, admin, stats, me
+│   │   ├── games/           # blackjack/, roulette/, baccarat/, slots/ (룰 엔진 + 테이블 루프)
+│   │   ├── sockets/         # Socket.IO 네임스페이스·인증 미들웨어
+│   │   └── services/        # wallet(잔액 트랜잭션), settings, jackpot
+│   └── test/                # Vitest
+└── docs/superpowers/specs/
+```
+
+- 개발: Vite dev 서버가 `/api`·`/socket.io`를 Express(포트 3000)로 프록시.
+- 배포(로컬 실행): Express가 `client/dist` 정적 서빙.
+
+## 3. 데이터 모델 (SQLite)
+
+- **users**: id, username(유니크), password_hash, nickname, role(`user`/`admin`), balance(정수), banned(0/1), ban_reason, bankrupt_count, total_wagered, total_won, last_daily_bonus_at, created_at
+- **transactions**: id, user_id, type(`signup_bonus`/`daily_bonus`/`bankrupt_relief`/`bet`/`payout`/`admin_grant`/`admin_confiscate`/`jackpot`), amount(±), balance_after, game, ref_round_id, reason(관리자 조작 시 필수), created_at — **모든 잔액 변동의 유일한 경로**
+- **rounds**: id, game, table_id, result_json, started_at, ended_at
+- **bets**: id, round_id, user_id, bet_json, amount, payout
+- **notices**: id, title, body, pinned(0/1), created_by, created_at, updated_at
+- **game_settings**: game(PK), settings_json, updated_by, updated_at
+- **jackpot**: pool(정수), seed, last_winner_id, last_won_amount, last_won_at
+
+잔액 변동은 `wallet` 서비스의 단일 함수(`applyTransaction`)만 사용하며 better-sqlite3 트랜잭션으로 원자 처리(음수 잔액 불가 검증 포함).
+
+## 4. 인증·계정
+
+- 회원가입: 아이디/비밀번호/닉네임 + **위험성 고지 동의 체크(필수)** → 시드 칩 지급(기본 10,000).
+- 로그인: JWT 발급(localStorage 보관, Authorization 헤더). Socket.IO 핸드셰이크 `auth.token`으로 동일 검증.
+- **차단(ban)**: 로그인 거부. 접속 중 차단되면 서버가 해당 유저의 모든 소켓을 즉시 disconnect + 사유 표시.
+- 시드 관리자 계정은 서버 최초 기동 시 환경변수(기본 `admin`)로 생성.
+
+## 5. 가상머니 이코노미
+
+- 가입 지급: 10,000칩 (설정 가능)
+- 일일 보너스: 최초 로그인(로비 접속) 시 1,000칩, KST 자정 기준 1일 1회
+- **파산 구제**: 잔액이 구제 기준(기본 100칩, 설정 가능) 미만일 때 신청 가능 → 5분 쿨다운 + **누적 손실액·파산 횟수를 보여주는 경고 모달**("지금까지 N칩을 잃었고 M번 파산했습니다…")을 확인해야 3,000칩 지급. bankrupt_count 증가, 통계에 집계.
+- 관리자 수동 **지급/몰수**: 금액+사유 필수, transactions에 기록.
+- 모든 수치는 game_settings의 `economy` 항목에서 관리자 조정 가능.
+
+## 6. 게임 설계 (서버 주도)
+
+### 공통: 고정 테이블 + 라운드 루프
+각 멀티플레이어 게임은 서버가 운영하는 고정 테이블 1개(확장 가능 구조)에서 상태 머신이 상시 순환한다:
+`베팅 오픈(카운트다운 브로드캐스트) → 베팅 마감 → 진행/연출 → 정산·결과 발표 → 대기 → 반복`.
+참가자가 0명이면 루프는 휴면하고 첫 입장 시 재개한다. 베팅은 서버에서 즉시 차감(원자적), 당첨금은 정산 시 지급한다. 규칙 변경은 **다음 라운드부터** 적용.
+
+### 블랙잭 (멀티, 7석)
+- 좌석제. 베팅한 좌석만 카드를 받는다. 딜링 → 좌석 순서대로 개인 턴(턴 타이머, 만료 시 자동 스탠드) → 딜러 플레이 → 정산.
+- 액션: 히트/스탠드/더블/스플릿(1회)/서렌더(설정 시).
+- **관리자 규칙 설정**: 슈 덱 수(1~8), soft17 히트 여부, 서렌더 허용 토글, 더블 허용 범위, 스플릿 허용, 블랙잭 배당(3:2 또는 6:5), 최소/최대 베팅, 베팅 시간, 턴 시간.
+- 슈는 설정된 덱 수로 구성, 페네트레이션(약 75%) 도달 시 리셔플.
+
+### 룰렛 (멀티)
+- 유러피언(0 하나). 베팅 보드: 인사이드(스트레이트~식스라인)·아웃사이드(적흑·홀짝·하이로우·더즌·칼럼).
+- 설정: 최소/최대 베팅, 베팅 시간, 스핀 연출 시간.
+
+### 바카라 (멀티)
+- 베팅: 플레이어(1:1)/뱅커(0.95:1)/타이(8:1)/플레이어·뱅커 페어(11:1). 표준 드로잉 룰 자동 진행, 스코어보드(최근 결과 로드) 표시.
+- 설정: 최소/최대 베팅, 베팅 시간, 타이·페어 배당.
+
+### 슬롯머신 (싱글 + 전역 프로그레시브 잭팟)
+- 3릴, 심볼·배당표는 원본 참조해 재설계. 스핀 요청 → 서버가 결과·배당 계산 → 응답.
+- 각 스핀 베팅액의 일정 비율(기본 1%)이 전역 잭팟 풀에 적립. 잭팟 심볼 3개 시 풀 전액 지급, 풀은 시드 값으로 리셋.
+- **잭팟 당첨 시**: 당첨자 화면에서 `jackpot.mp3` 재생 + 전체 접속자에게 실시간 축하 배너 브로드캐스트, 잭팟 이력 기록.
+- 설정: 스핀 베팅 단위·한도, 잭팟 적립률, 잭팟 시드.
+
+## 7. 실시간 통신 (Socket.IO)
+
+- 네임스페이스: `/blackjack`, `/roulette`, `/baccarat` (테이블 상태·라운드 이벤트), 기본 네임스페이스(잔액 갱신, 공지 푸시, 잭팟 알림, 접속자 수, 강제 차단).
+- 서버 → 클라: `table:state`(입장·재연결 시 전체 상태 스냅샷), `round:phase`, `round:result`, `balance:update`, `notice:new`, `jackpot:won`, `session:banned`.
+- 클라 → 서버: `bet:place`, `action`(블랙잭 히트 등), `seat:join/leave`.
+- **재연결 복구**: 접속 시 항상 `table:state` 스냅샷을 내려 클라이언트가 어느 시점에 들어와도 화면을 재구성할 수 있게 한다.
+
+## 8. 관리자 기능 (`/admin`, role=admin 라우트 가드 + 서버 미들웨어 이중 검증)
+
+1. **유저 관리**: 목록·검색(아이디/닉네임), 상세(잔액·거래 이력·파산 횟수), **칩 지급**(금액+사유), **몰수**(금액 또는 전액+사유), **차단/해제**(사유).
+2. **공지 CRUD**: 작성·수정·삭제(관리자만), 고정(pinned) 지원. 등록 즉시 접속자에게 배너 푸시. 일반 유저는 로비·공지 페이지에서 조회만.
+3. **통계 대시보드**(Chart.js): 총 가입자·오늘 활동 유저, 일별 베팅액 추이, 게임별 총 베팅/지급/하우스 손익, 파산 구제 횟수 추이, 잭팟 당첨 이력, 베팅 상위 유저 Top 10. 기간 필터(7일/30일/전체).
+4. **게임 규칙 설정**: 게임별 폼(6장의 설정 항목) + 이코노미 설정(시드·보너스·구제액). 저장 시 유효성 검증(최소<최대 등), "다음 라운드부터 적용" 안내 표시.
+
+## 9. 책임 도박 장치
+
+- 전 페이지 하단 고정 문구: "본 사이트는 가상머니 전용입니다. 실제 도박은 오락이 아닌 손실이며, 중독은 질병입니다."
+- 가입 시 고지 동의 필수.
+- 파산 구제 플로우에 누적 손실 직면 모달(5장 참조).
+- 연속 플레이 1시간마다 휴식 권장 토스트.
+- 마이페이지: 본인 손익 그래프·총 베팅/총 손실·파산 횟수 표시.
+
+## 10. UI / 사운드
+
+- **테마**: 다크 그린 펠트 + 골드 액센트, 한국어 전체.
+- **로비**: 게임 카드 4종(접속자 수 표시), 고정 공지 배너, 실시간 잭팟 금액 위젯, 잔액 헤더.
+- **테이블 화면**: 좌석(닉네임·베팅액), 딜러 영역, 칩 선택 UI, 베팅 카운트다운 링, 결과 연출.
+- **카드**: playing-cards-assets SVG를 `client/src/assets/cards/`에 포함(MIT 고지 유지).
+- **사운드**(`useSound` 컴포저블, 음소거 토글·볼륨 저장):
+  - 잭팟: `C:\Users\JinhoLap\Downloads\jackpot-1.mp3` → `client/public/sounds/jackpot.mp3` 복사.
+  - SE(버튼 클릭, 칩 베팅, 카드 딜, 룰렛/슬롯 스핀, 승리/패배, 카운트다운 경고): **Web Audio API 합성**으로 구현해 외부 파일·라이선스 의존 제거. 추후 CC0 에셋 교체 가능 구조.
+
+## 11. 에러 처리
+
+- 잔액 부족 베팅 → 서버 거부 + 클라 토스트. 베팅 마감 후 도착한 베팅 → 거부.
+- 라운드 중 이탈: 베팅 유효 유지, 블랙잭 턴은 타임아웃 자동 스탠드. 정산은 오프라인이어도 DB에 반영, 재접속 시 잔액 동기화.
+- 서버 재시작: 진행 중이던 라운드는 미정산 베팅 전액 환불 후 새 라운드 시작(기동 시 미종료 rounds 검사).
+- 클라 소켓 끊김: 자동 재연결 + `table:state` 스냅샷 복구, 연결 상태 인디케이터.
+
+## 12. 테스트 전략
+
+- **Vitest 단위 테스트(핵심)**: 블랙잭 핸드 평가(soft/hard, soft17 분기, 블랙잭 판정)·정산, 바카라 드로잉 룰 전체 분기, 룰렛 배당표, 슬롯 배당·잭팟 적립, wallet 트랜잭션(음수 방지·원자성), 파산 구제 조건.
+- 게임 상태 머신은 타이머를 주입 가능하게 설계해 페이즈 전이를 테스트.
+- 완성 후 실제 브라우저 멀티 탭으로 멀티플레이어 시나리오 수동 검증(렌더 결과 관찰 후 수정 루프).
+
+## 13. 범위 제외 (YAGNI)
+
+- 현금/결제/환전 일체, 채팅, 친구·사설방, 모바일 앱, 다국어(한국어만), 이메일 인증·비밀번호 찾기, 수평 확장(단일 프로세스 전제).
