@@ -25,3 +25,7 @@
   - Minor: type enum 미검증(스코프외), rollback 비발행 테스트 없음(구조상 보장), 없는유저 bare Error
 - Task 1: complete (commits 66b6c4a..ed2e6ea, review clean) — 포트 3000→4000 재조정 포함
   - Minor: task-1-report.md의 concerns가 포트 변경 전 상태 서술(코드 아닌 리포트 staleness)
+
+## P2 (이코노미·관리자·공지)
+- Task 1: complete (commits df5bbe1..e575d22, review approved) — 서버 22/22
+  - [최종triage] Important(plan-mandated, 동작정확): economy.js relief 400/429 분기가 reliefStatus 로직 중복 재유도 → reasonCode 반환으로 리팩터 권장
