@@ -38,6 +38,11 @@ function totalCards(s) {
   return s.dealer.cards.length + s.seats.reduce((n, seat) => n + (seat?.hands.reduce((m, h) => m + h.cards.length, 0) ?? 0), 0)
 }
 
+// push(무승부)는 payout>0(환급)이어도 승리가 아님 — 실제 승리는 outcome이 win/blackjack일 때뿐
+function isWinOutcome(outcome) {
+  return outcome === 'win' || outcome === 'blackjack'
+}
+
 onMounted(async () => {
   try {
     state.value = await game.connect(route.params.tableId)
@@ -51,11 +56,17 @@ onMounted(async () => {
     prevCardCount = count
     if (s.phase === 'result' && state.value?.phase !== 'result') {
       const mine = s.seats.find((seat) => seat?.userId === auth.user?.id)
-      const won = mine?.hands.some((h) => h.result && h.result.payout > (h.doubled ? mine.bet * 2 : mine.bet) - 1 && h.result.outcome !== 'push')
+      const won = mine?.hands.some((h) => h.result && isWinOutcome(h.result.outcome))
+      const allPush = mine?.hands.length > 0 && mine.hands.every((h) => h.result?.outcome === 'push')
       if (mine?.bet > 0) (won ? sfx.win() : sfx.lose())
       if (mine?.bet > 0) {
-        const total = mine.hands.reduce((sum, h) => sum + (h.result?.payout ?? 0), 0)
-        floating.value?.show(total > 0 ? `+${total.toLocaleString()}칩` : '아쉽네요…', total > 0 ? 'win' : 'lose')
+        if (won) {
+          const total = mine.hands.reduce((sum, h) => sum + (h.result?.payout ?? 0), 0)
+          floating.value?.show(`+${total.toLocaleString()}칩`, 'win')
+        } else if (!allPush) {
+          floating.value?.show('아쉽네요…', 'lose')
+        }
+        // 전부 push(무승부)인 경우: 승리 연출을 띄우지 않음 (정직한 결과 표시)
       }
     }
     state.value = s
@@ -123,7 +134,7 @@ function doAction(move) {
         class="rounded-xl border p-2 text-center"
         :class="[
           state.currentSeat === i ? 'border-amber-400 bg-amber-500/10 fx-pulse-gold' : 'border-emerald-800 bg-emerald-900/40',
-          state.phase === 'result' && seat?.hands.some((h) => h.result && h.result.payout > 0) ? 'fx-glow-win' : '',
+          state.phase === 'result' && seat?.hands.some((h) => h.result && isWinOutcome(h.result.outcome)) ? 'fx-glow-win' : '',
         ]">
         <template v-if="seat">
           <p class="truncate text-xs font-bold" :class="seat.userId === auth.user?.id ? 'text-amber-300' : 'text-emerald-200'">
@@ -136,9 +147,9 @@ function doAction(move) {
             </div>
             <p class="text-xs text-emerald-300">{{ hand.total }}<span v-if="hand.soft"> (소프트)</span></p>
             <p v-if="hand.result" class="text-xs font-bold"
-              :class="hand.result.payout > 0 ? 'text-amber-300' : 'text-red-400'">
+              :class="isWinOutcome(hand.result.outcome) ? 'text-amber-300' : hand.result.outcome === 'push' ? 'text-emerald-300' : 'text-red-400'">
               {{ OUTCOME_LABELS[hand.result.outcome] }}
-              <template v-if="hand.result.payout > 0"> +{{ hand.result.payout.toLocaleString() }}</template>
+              <template v-if="isWinOutcome(hand.result.outcome)"> +{{ hand.result.payout.toLocaleString() }}</template>
             </p>
           </div>
           <button v-if="seat.userId === auth.user?.id" class="mt-1 text-xs text-red-400 hover:underline" @click="leaveSeat">

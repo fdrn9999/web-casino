@@ -40,15 +40,15 @@ const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').ma
 
 function spinWheelTo(resultNumber, durationMs) {
   const idx = WHEEL_ORDER.indexOf(resultNumber)
-  // 포인터(12시)에 결과 세그먼트가 오도록: 5바퀴 + 목표 각도
-  const target = 360 * 5 + (360 - idx * SEG)
+  // 포인터(12시)에 결과 세그먼트가 오도록 하는 절대 각도(mod 360)
+  const desiredMod = (((360 - idx * SEG) % 360) + 360) % 360
+  const current = wheelDeg.value
+  const currentMod = ((current % 360) + 360) % 360
+  // 현재 각도에서 목표 각도까지 앞으로만 회전하는 델타
+  const delta = ((desiredMod - currentMod) % 360 + 360) % 360
   wheelSpinning.value = true
-  wheelDeg.value = wheelDeg.value % 360 // 리셋
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      wheelDeg.value += target
-    })
-  })
+  // 리셋하지 않고 누적: 최소 5바퀴 + 델타만큼 앞으로 회전
+  wheelDeg.value = current + 360 * 5 + delta
   sfx.spinStart()
   setTimeout(() => (wheelSpinning.value = false), durationMs)
 }
