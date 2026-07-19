@@ -17,7 +17,11 @@ async function refresh() {
 async function show() {
   error.value = ''
   done.value = false
-  await refresh()
+  try {
+    await refresh()
+  } catch (e) {
+    error.value = e.message
+  }
   open.value = true
   timer = setInterval(async () => {
     if (status.value?.cooldownRemainingSec > 0) await refresh()
