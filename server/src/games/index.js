@@ -1,8 +1,9 @@
 import { BlackjackRunner } from './blackjack/BlackjackRunner.js'
+import { RouletteRunner } from './roulette/RouletteRunner.js'
 import { registerRunner } from './registry.js'
 import { listTables, broadcastTables } from '../services/tables.js'
 
-export const RUNNER_CLASSES = { blackjack: BlackjackRunner }
+export const RUNNER_CLASSES = { blackjack: BlackjackRunner, roulette: RouletteRunner }
 
 export function startRunner(db, io, table) {
   const RunnerClass = RUNNER_CLASSES[table.game]
