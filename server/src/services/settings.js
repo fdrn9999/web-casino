@@ -13,6 +13,18 @@ export const DEFAULT_SETTINGS = {
     jackpotRate: 0.01,
     jackpotSeed: 50000,
   },
+  blackjack: {
+    decks: 6,
+    hitSoft17: false,
+    surrenderAllowed: true,
+    doubleAllowed: true,
+    splitAllowed: true,
+    blackjackPayout: 1.5,
+    minBet: 100,
+    maxBet: 10000,
+    betSeconds: 20,
+    turnSeconds: 15,
+  },
 }
 
 export function getSettings(db, game) {
