@@ -116,3 +116,4 @@
   - Important fix(2): 휠 다회전 정렬(4라운드 브라우저검증), 블랙잭 push 무승부 중립표시(~25라운드 검증)
 
 ## P8 (참고사이트 반영: 출석부·리더보드·HUD·채팅)
+- Task 1: complete (commits cefe4f0..6e2dbf2, review+fix) — 출석부 서버, 105/105, GET nextReward 리셋일치 fix
