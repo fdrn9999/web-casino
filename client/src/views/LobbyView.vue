@@ -4,6 +4,7 @@ import { connectSocket } from '../composables/useSocket'
 import NoticeBoard from '../components/NoticeBoard.vue'
 import ReliefModal from '../components/ReliefModal.vue'
 import JackpotWidget from '../components/JackpotWidget.vue'
+import TableList from '../components/TableList.vue'
 import { api } from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 
@@ -23,9 +24,9 @@ async function claimDaily() {
 }
 
 const games = [
-  { key: 'blackjack', name: '블랙잭', emoji: '🃏', desc: '딜러를 이겨라 (7석 라이브 테이블)' },
-  { key: 'roulette', name: '룰렛', emoji: '🎡', desc: '유러피언 룰렛 라이브 테이블' },
-  { key: 'baccarat', name: '바카라', emoji: '🀄', desc: '플레이어 vs 뱅커' },
+  { key: 'blackjack', name: '블랙잭', emoji: '🃏', desc: '딜러를 이겨라 (7석 라이브 테이블)', tables: true },
+  { key: 'roulette', name: '룰렛', emoji: '🎡', desc: '유러피언 룰렛 라이브 테이블', tables: false },
+  { key: 'baccarat', name: '바카라', emoji: '🀄', desc: '플레이어 vs 뱅커', tables: false },
   { key: 'slots', name: '슬롯머신', emoji: '🎰', desc: '프로그레시브 잭팟에 도전', to: '/slots' },
 ]
 
@@ -57,7 +58,8 @@ onMounted(() => connectSocket())
         <div class="text-3xl">{{ g.emoji }}</div>
         <h2 class="mt-2 text-lg font-bold text-amber-300">{{ g.name }}</h2>
         <p class="mt-1 text-xs text-emerald-300">{{ g.desc }}</p>
-        <span v-if="!g.to" class="mt-3 inline-block rounded-full bg-emerald-800 px-2 py-0.5 text-xs text-emerald-300">준비 중</span>
+        <TableList v-if="g.tables" :game="g.key" />
+        <span v-else-if="!g.to" class="mt-3 inline-block rounded-full bg-emerald-800 px-2 py-0.5 text-xs text-emerald-300">준비 중</span>
       </component>
     </section>
 

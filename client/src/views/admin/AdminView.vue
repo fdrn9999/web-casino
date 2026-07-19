@@ -4,6 +4,8 @@ const route = useRoute()
 const tabs = [
   { to: '/admin/users', label: '유저 관리' },
   { to: '/admin/notices', label: '공지 관리' },
+  { to: '/admin/tables', label: '테이블 관리' },
+  { to: '/admin/settings', label: '게임 규칙' },
 ]
 </script>
 

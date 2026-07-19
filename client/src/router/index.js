@@ -6,6 +6,7 @@ const routes = [
   { path: '/register', component: () => import('../views/RegisterView.vue'), meta: { guestOnly: true } },
   { path: '/', component: () => import('../views/LobbyView.vue'), meta: { requiresAuth: true } },
   { path: '/slots', component: () => import('../views/SlotsView.vue'), meta: { requiresAuth: true } },
+  { path: '/blackjack/:tableId', component: () => import('../views/BlackjackView.vue'), meta: { requiresAuth: true } },
   {
     path: '/admin',
     component: () => import('../views/admin/AdminView.vue'),
@@ -14,6 +15,8 @@ const routes = [
       { path: '', redirect: '/admin/users' },
       { path: 'users', component: () => import('../views/admin/AdminUsersView.vue') },
       { path: 'notices', component: () => import('../views/admin/AdminNoticesView.vue') },
+      { path: 'tables', component: () => import('../views/admin/AdminTablesView.vue') },
+      { path: 'settings', component: () => import('../views/admin/AdminSettingsView.vue') },
     ],
   },
 ]
