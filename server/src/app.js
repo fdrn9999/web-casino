@@ -6,6 +6,7 @@ import { noticesRouter, adminNoticesRouter } from './routes/notices.js'
 import { slotsRouter } from './routes/slots.js'
 import { tablesRouter } from './routes/tables.js'
 import { adminTablesRouter } from './routes/admin-tables.js'
+import { adminSettingsRouter } from './routes/admin-settings.js'
 import { requireAuth } from './middleware/auth.js'
 
 export function createApp(db, ctx = {}) {
@@ -22,6 +23,7 @@ export function createApp(db, ctx = {}) {
   app.use('/api/slots', slotsRouter(db))
   app.use('/api/tables', tablesRouter(db))
   app.use('/api/admin/tables', adminTablesRouter(db, ctx))
+  app.use('/api/admin/settings', adminSettingsRouter(db, ctx))
 
   app.use('/api', (req, res) => res.status(404).json({ error: '존재하지 않는 API입니다.' }))
   app.use((err, req, res, next) => {
