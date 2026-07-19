@@ -1,3 +1,5 @@
+import path from 'node:path'
+import fs from 'node:fs'
 import express from 'express'
 import { authRouter } from './routes/auth.js'
 import { economyRouter } from './routes/economy.js'
@@ -30,6 +32,18 @@ export function createApp(db, ctx = {}) {
   app.use('/api/admin/stats', adminStatsRouter(db))
 
   app.use('/api', (req, res) => res.status(404).json({ error: '존재하지 않는 API입니다.' }))
+
+  const dist = path.resolve('../client/dist')
+  if (fs.existsSync(dist)) {
+    app.use(express.static(dist))
+    app.use((req, res, next) => {
+      if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/socket.io')) {
+        return res.sendFile(path.join(dist, 'index.html'))
+      }
+      next()
+    })
+  }
+
   app.use((err, req, res, next) => {
     console.error(err)
     res.status(500).json({ error: '서버 오류가 발생했습니다.' })
