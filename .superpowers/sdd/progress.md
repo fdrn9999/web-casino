@@ -98,5 +98,7 @@
 - Task 4: complete (commits 88f2049..eb1ecbe, review approved) — 마이페이지 손익직면(음수 RED 정직표시)
 - Task 5: complete (commits e3d33a5..1718bfa, review clean, 무결점) — 휴식 알림, 타이머정리 완비
 - Task 5.5: complete (commits 1e512fa..ad99508, review+fix) — reconcile, 99/99
+- Task 6: complete (commits 33d2482..d0f17fb, review approved, 재실행 99/99+prod smoke) — 프로덕션 서빙·README
+  - [최종triage] Minor: app.js dist 경로가 cwd 상대(npm start에선 정상, 다른 실행법이면 정적서빙 무음 비활성-fail safe)
   - Critical fix: 환불+종료표시 비원자적→라운드별 db.transaction 원자화(크래시시 이중환불 방지)
   - [최종triage] Minor(반복): 여러 뷰 로딩/에러 상태 UI 없음(API 실패시 빈화면)
