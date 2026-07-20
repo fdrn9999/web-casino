@@ -14,6 +14,7 @@ const sending = ref(false)
 const collapsed = ref(true) // 모바일 기본 접힘, 데스크톱은 항상 펼침(lg:flex)
 const listEl = ref(null)
 let offChat = null
+let nextMsgId = 0
 
 function scrollToBottom() {
   nextTick(() => {
@@ -23,7 +24,7 @@ function scrollToBottom() {
 
 onMounted(() => {
   offChat = props.game.onChat((msg) => {
-    messages.value.push(msg)
+    messages.value.push({ ...msg, _id: ++nextMsgId })
     if (messages.value.length > MAX_MESSAGES) messages.value.splice(0, messages.value.length - MAX_MESSAGES)
     scrollToBottom()
   })
@@ -68,7 +69,7 @@ async function submit() {
       <div :class="[collapsed ? 'hidden lg:flex' : 'flex', 'flex-col border-t border-emerald-800/60 lg:min-h-0 lg:flex-1']">
         <div ref="listEl" class="max-h-56 space-y-1 overflow-y-auto px-3 py-2 text-xs lg:max-h-none lg:flex-1">
           <p v-if="messages.length === 0" class="text-emerald-500">아직 메시지가 없습니다.</p>
-          <p v-for="(msg, i) in messages" :key="i" class="break-words text-emerald-200">
+          <p v-for="msg in messages" :key="msg._id" class="break-words text-emerald-200">
             <span class="text-[10px] text-emerald-600">{{ formatTime(msg.at) }}</span>
             <span class="font-bold text-amber-300">{{ msg.nickname }}</span>
             <span class="text-emerald-500">:</span>

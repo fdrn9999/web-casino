@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   code: { type: String, required: true },
@@ -24,6 +24,8 @@ function srcFor(code) {
   )
 }
 
+const src = computed(() => srcFor(props.code))
+
 const flipping = ref(false)
 watch(() => props.code, (next, prev) => {
   if (prev === 'BACK' && next !== 'BACK') {
@@ -38,7 +40,7 @@ watch(() => props.code, (next, prev) => {
     :class="[animate ? 'fx-deal-in' : '', flipping ? 'fx-flip' : '']"
     class="aspect-[5/7] w-12 rounded-md border-2 border-white/80 bg-gradient-to-br from-red-800 to-red-950 shadow sm:w-16"
     aria-label="뒤집힌 카드" />
-  <img v-else-if="srcFor(code)" :src="srcFor(code)" :alt="code"
+  <img v-else-if="src" :src="src" :alt="code"
     :class="[animate ? 'fx-deal-in' : '', flipping ? 'fx-flip' : '']"
     class="aspect-[5/7] w-12 rounded-md bg-white shadow sm:w-16" />
   <div v-else

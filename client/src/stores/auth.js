@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 import { api } from '../lib/api'
 
+// Module-level (not store state): dedupes concurrent fetchMe() calls, e.g.
+// the unawaited boot-time call in main.js racing the router guard's await.
+let fetchMePromise = null
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: localStorage.getItem('token'),
@@ -23,12 +27,18 @@ export const useAuthStore = defineStore('auth', {
       this._apply(await api('/auth/login', { method: 'POST', body: form }))
     },
     async fetchMe() {
-      try {
-        const { user } = await api('/me')
-        this.user = user
-      } catch {
-        this.logout()
-      }
+      if (fetchMePromise) return fetchMePromise
+      fetchMePromise = (async () => {
+        try {
+          const { user } = await api('/me')
+          this.user = user
+        } catch {
+          this.logout()
+        } finally {
+          fetchMePromise = null
+        }
+      })()
+      return fetchMePromise
     },
     logout() {
       this.token = null
