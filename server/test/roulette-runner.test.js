@@ -78,4 +78,13 @@ describe('RouletteRunner', () => {
     r.stop({ refund: true })
     expect(db.prepare('SELECT balance FROM users WHERE id = 1').get().balance).toBe(10000)
   })
+
+  it('한 유저당 한 라운드 20베팅 초과 시 21번째 베팅은 거부된다', () => {
+    const r = new RouletteRunner({ db, nsp: fakeNsp, table, timers: t.timers })
+    r.onJoin(u1, '룰렛러')
+    for (let i = 0; i < 20; i++) {
+      expect(r.placeBet(u1, { type: 'red', amount: 100 }).ok).toBe(true)
+    }
+    expect(r.placeBet(u1, { type: 'red', amount: 100 }).error).toBeTruthy()
+  })
 })

@@ -49,4 +49,15 @@ describe('blackjack engine', () => {
     const r = settleHand({ playerCards: [c('A'), c('K')], dealerCards: [c('10'), c('7')], bet: 100, rules: { blackjackPayout: 1.2 } })
     expect(r.payout).toBe(220)
   })
+
+  it('스플릿에서 나온 21은 블랙잭 보너스 없이 일반 21로 정산된다', () => {
+    const dealer17 = [c('10'), c('7')]
+    const playerCards = [c('A'), c('K')]
+    // 일반 핸드(스플릿 아님): 첫 2장 21 → 블랙잭 1.5배 보너스
+    expect(settleHand({ playerCards, dealerCards: dealer17, bet: 100, fromSplit: false, rules }))
+      .toEqual({ payout: 250, outcome: 'blackjack' })
+    // 스플릿에서 나온 21: 블랙잭 보너스 없이 21 vs 17 일반 승리(2배)로 처리
+    expect(settleHand({ playerCards, dealerCards: dealer17, bet: 100, fromSplit: true, rules }))
+      .toEqual({ payout: 200, outcome: 'win' })
+  })
 })
