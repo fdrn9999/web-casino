@@ -6,6 +6,8 @@ import SimpleChart from '../components/SimpleChart.vue'
 
 const auth = useAuthStore()
 const stats = ref(null)
+const loading = ref(false)
+const error = ref('')
 
 const TYPE_LABELS = {
   signup_bonus: '가입 보너스', daily_bonus: '출석 보너스', bankrupt_relief: '파산 구제',
@@ -13,13 +15,28 @@ const TYPE_LABELS = {
 }
 const GAME_LABELS = { slots: '슬롯', blackjack: '블랙잭', roulette: '룰렛', baccarat: '바카라' }
 
-onMounted(async () => {
-  stats.value = await api('/me/stats')
-})
+async function load() {
+  loading.value = true
+  error.value = ''
+  try {
+    stats.value = await api('/me/stats')
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(load)
 </script>
 
 <template>
-  <div v-if="stats" class="mx-auto max-w-3xl space-y-4">
+  <div v-if="loading" class="py-10 text-center text-sm text-emerald-300">불러오는 중…</div>
+  <div v-else-if="error" class="mx-auto max-w-3xl rounded-lg bg-red-950/50 p-4 text-center text-sm text-red-300">
+    <p>{{ error }}</p>
+    <button class="mt-3 rounded-lg bg-red-800 px-4 py-1.5 text-xs font-bold text-white hover:bg-red-700" @click="load">다시 시도</button>
+  </div>
+  <div v-else-if="stats" class="mx-auto max-w-3xl space-y-4">
     <h1 class="text-xl font-bold text-amber-400">👤 {{ auth.user?.nickname }}의 마이페이지</h1>
 
     <section class="rounded-2xl border p-5 text-center"

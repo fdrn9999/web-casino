@@ -6,21 +6,33 @@ const GAME_LABELS = { slots: '슬롯', blackjack: '블랙잭', roulette: '룰렛
 
 const data = ref(null)
 const error = ref('')
+const loading = ref(false)
 
-onMounted(async () => {
+async function load() {
+  loading.value = true
+  error.value = ''
   try {
     data.value = await api('/leaderboard')
   } catch (e) {
     error.value = e.message
+  } finally {
+    loading.value = false
   }
-})
+}
+
+onMounted(load)
 </script>
 
 <template>
   <div class="mx-auto max-w-4xl space-y-6">
     <h1 class="text-xl font-bold text-amber-400">🏆 명예의 전당</h1>
 
-    <p v-if="error" class="rounded-lg bg-red-950/50 p-3 text-sm text-red-300">{{ error }}</p>
+    <p v-if="loading" class="py-10 text-center text-sm text-emerald-300">불러오는 중…</p>
+
+    <div v-if="error" class="rounded-lg bg-red-950/50 p-3 text-sm text-red-300">
+      <p>{{ error }}</p>
+      <button class="mt-2 rounded-lg bg-red-800 px-4 py-1.5 text-xs font-bold text-white hover:bg-red-700" @click="load">다시 시도</button>
+    </div>
 
     <div v-if="data" class="space-y-6">
       <section class="overflow-x-auto rounded-xl border border-emerald-800 bg-emerald-900/40 p-4">

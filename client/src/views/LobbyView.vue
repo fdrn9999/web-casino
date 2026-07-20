@@ -13,6 +13,16 @@ const auth = useAuthStore()
 const reliefModal = ref(null)
 const attendanceModal = ref(null)
 const bonusMsg = ref('')
+const reliefThreshold = ref(null)
+
+async function loadReliefThreshold() {
+  try {
+    const res = await api('/relief/status')
+    reliefThreshold.value = res.threshold
+  } catch {
+    // 상태를 못 불러오면 구제 버튼은 표시하지 않음 (하드코딩된 기본값 사용 안 함)
+  }
+}
 
 async function claimDaily() {
   try {
@@ -32,7 +42,10 @@ const games = [
   { key: 'slots', name: '슬롯머신', emoji: '🎰', desc: '프로그레시브 잭팟에 도전', to: '/slots' },
 ]
 
-onMounted(() => connectSocket())
+onMounted(() => {
+  connectSocket()
+  loadReliefThreshold()
+})
 </script>
 
 <template>
@@ -42,7 +55,7 @@ onMounted(() => connectSocket())
         @click="claimDaily">🎁 출석 보너스</button>
       <button class="rounded-lg bg-emerald-800 px-3 py-1.5 text-sm font-bold text-amber-300 hover:bg-emerald-700"
         @click="attendanceModal.show()">📅 출석부</button>
-      <button v-if="(auth.user?.balance ?? 0) < 100"
+      <button v-if="reliefThreshold !== null && (auth.user?.balance ?? 0) < reliefThreshold"
         class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-red-500"
         @click="reliefModal.show()">⚠️ 파산 구제 신청</button>
       <RouterLink to="/leaderboard"

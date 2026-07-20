@@ -18,6 +18,7 @@ const game = useGameSocket('baccarat')
 
 const state = ref(null)
 const error = ref('')
+const sending = ref(false)
 const amount = ref(100)
 const CHIPS = [100, 500, 1000, 5000]
 const floating = ref(null)
@@ -65,10 +66,17 @@ onMounted(async () => {
 onUnmounted(() => game.disconnect())
 
 async function bet(kind) {
+  // 라운드트립 중 중복 클릭 방지 (서버도 중복은 거부하지만 불필요한 요청/에러 노이즈를 줄임)
+  if (sending.value) return
+  sending.value = true
   error.value = ''
   sfx.chip()
-  const res = await game.emitAck('bet:place', { kind, amount: amount.value })
-  if (res.error) error.value = res.error
+  try {
+    const res = await game.emitAck('bet:place', { kind, amount: amount.value })
+    if (res.error) error.value = res.error
+  } finally {
+    sending.value = false
+  }
 }
 </script>
 
@@ -119,7 +127,7 @@ async function bet(kind) {
     <!-- 베팅 -->
     <section class="rounded-2xl border border-emerald-800 bg-emerald-900/50 p-4">
       <div class="grid grid-cols-5 gap-2">
-        <button v-for="b in KIND_BUTTONS" :key="b.kind" :disabled="state.phase !== 'betting'"
+        <button v-for="b in KIND_BUTTONS" :key="b.kind" :disabled="state.phase !== 'betting' || sending"
           class="rounded-xl p-2 text-center text-white hover:opacity-80 disabled:opacity-40" :class="b.cls"
           @click="bet(b.kind)">
           <span class="block text-xs font-bold sm:text-sm">{{ b.label }}</span>

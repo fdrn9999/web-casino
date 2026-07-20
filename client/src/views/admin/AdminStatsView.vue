@@ -5,17 +5,32 @@ import SimpleChart from '../../components/SimpleChart.vue'
 
 const days = ref(30)
 const stats = ref(null)
+const loading = ref(false)
+const error = ref('')
 const GAME_LABELS = { slots: '슬롯', blackjack: '블랙잭', roulette: '룰렛', baccarat: '바카라' }
 
 async function load() {
-  stats.value = await api(`/admin/stats?days=${days.value}`)
+  loading.value = true
+  error.value = ''
+  try {
+    stats.value = await api(`/admin/stats?days=${days.value}`)
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    loading.value = false
+  }
 }
 watch(days, load)
 onMounted(load)
 </script>
 
 <template>
-  <div v-if="stats" class="space-y-6">
+  <div v-if="loading" class="py-10 text-center text-sm text-emerald-300">불러오는 중…</div>
+  <div v-else-if="error" class="rounded-lg bg-red-950/50 p-4 text-center text-sm text-red-300">
+    <p>{{ error }}</p>
+    <button class="mt-3 rounded-lg bg-red-800 px-4 py-1.5 text-xs font-bold text-white hover:bg-red-700" @click="load">다시 시도</button>
+  </div>
+  <div v-else-if="stats" class="space-y-6">
     <div class="flex gap-2">
       <button v-for="d in [7, 30, 0]" :key="d"
         class="rounded-lg px-3 py-1.5 text-sm"

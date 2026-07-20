@@ -18,6 +18,7 @@ const game = useGameSocket('blackjack')
 
 const state = ref(null)
 const error = ref('')
+const sending = ref(false)
 const betAmount = ref(0)
 const CHIPS = [100, 500, 1000, 5000]
 const floating = ref(null)
@@ -86,10 +87,17 @@ onMounted(async () => {
 onUnmounted(() => game.disconnect())
 
 async function act(event, payload) {
+  // 라운드트립 중 중복 클릭으로 같은 요청이 두 번 나가지 않도록 방지 (서버도 중복은 거부하지만, 불필요한 요청/에러 노이즈를 줄임)
+  if (sending.value) return { error: undefined }
+  sending.value = true
   error.value = ''
-  const res = await game.emitAck(event, payload)
-  if (res.error) error.value = res.error
-  return res
+  try {
+    const res = await game.emitAck(event, payload)
+    if (res.error) error.value = res.error
+    return res
+  } finally {
+    sending.value = false
+  }
 }
 
 function sit(seatIdx) {
@@ -178,19 +186,19 @@ function doAction(move) {
           @click="addChip(v)">{{ v.toLocaleString() }}</button>
         <span class="ml-2 font-bold tabular-nums text-amber-300">{{ betAmount.toLocaleString() }}칩</span>
         <button class="rounded-lg px-2 py-1 text-xs text-emerald-400 hover:text-red-400" @click="betAmount = 0">지우기</button>
-        <button :disabled="betAmount === 0"
+        <button :disabled="betAmount === 0 || sending"
           class="ml-auto rounded-lg bg-amber-500 px-4 py-2 text-sm font-black text-emerald-950 hover:bg-amber-400 disabled:opacity-40"
           @click="confirmBet">베팅 확정</button>
       </div>
       <div v-else-if="isMyTurn && myHand" class="flex flex-wrap justify-center gap-2">
-        <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold hover:bg-emerald-500" @click="doAction('hit')">히트</button>
-        <button class="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-bold hover:bg-emerald-700" @click="doAction('stand')">스탠드</button>
-        <button v-if="state.rules.doubleAllowed && myHand.cards.length === 2"
-          class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold hover:bg-amber-500" @click="doAction('double')">더블</button>
+        <button :disabled="sending" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold hover:bg-emerald-500 disabled:opacity-40" @click="doAction('hit')">히트</button>
+        <button :disabled="sending" class="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-bold hover:bg-emerald-700 disabled:opacity-40" @click="doAction('stand')">스탠드</button>
+        <button v-if="state.rules.doubleAllowed && myHand.cards.length === 2" :disabled="sending"
+          class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold hover:bg-amber-500 disabled:opacity-40" @click="doAction('double')">더블</button>
         <button v-if="state.rules.splitAllowed && mySeat.hands.length === 1 && myHand.cards.length === 2 && myHand.cards[0].code.slice(0, -1) === myHand.cards[1].code.slice(0, -1)"
-          class="rounded-lg bg-purple-600 px-4 py-2 text-sm font-bold hover:bg-purple-500" @click="doAction('split')">스플릿</button>
+          :disabled="sending" class="rounded-lg bg-purple-600 px-4 py-2 text-sm font-bold hover:bg-purple-500 disabled:opacity-40" @click="doAction('split')">스플릿</button>
         <button v-if="state.rules.surrenderAllowed && mySeat.hands.length === 1 && myHand.cards.length === 2"
-          class="rounded-lg bg-red-700 px-4 py-2 text-sm font-bold hover:bg-red-600" @click="doAction('surrender')">서렌더</button>
+          :disabled="sending" class="rounded-lg bg-red-700 px-4 py-2 text-sm font-bold hover:bg-red-600 disabled:opacity-40" @click="doAction('surrender')">서렌더</button>
       </div>
       <p v-else class="text-center text-sm text-emerald-400">{{ PHASE_LABELS[state.phase] }}…</p>
       <p v-if="error" class="mt-2 text-center text-sm text-red-400">{{ error }}</p>

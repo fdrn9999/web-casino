@@ -16,6 +16,7 @@ const game = useGameSocket('roulette')
 
 const state = ref(null)
 const error = ref('')
+const sending = ref(false)
 const amount = ref(100)
 const selected = ref([])
 
@@ -91,11 +92,18 @@ function toggleNumber(n) {
 }
 
 async function bet(payload) {
+  // 라운드트립 중 중복 클릭 방지 (서버도 중복은 거부하지만 불필요한 요청/에러 노이즈를 줄임)
+  if (sending.value) return
+  sending.value = true
   error.value = ''
   sfx.chip()
-  const res = await game.emitAck('bet:place', { ...payload, amount: amount.value })
-  if (res.error) error.value = res.error
-  else selected.value = []
+  try {
+    const res = await game.emitAck('bet:place', { ...payload, amount: amount.value })
+    if (res.error) error.value = res.error
+    else selected.value = []
+  } finally {
+    sending.value = false
+  }
 }
 
 function betInside() {
@@ -165,8 +173,8 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
         </template>
       </div>
       <div class="mt-2 flex flex-wrap gap-1">
-        <button v-for="b in OUTSIDE_BUTTONS" :key="b.type"
-          class="rounded bg-emerald-950 px-2 py-1.5 text-xs text-emerald-200 hover:bg-emerald-800"
+        <button v-for="b in OUTSIDE_BUTTONS" :key="b.type" :disabled="sending"
+          class="rounded bg-emerald-950 px-2 py-1.5 text-xs text-emerald-200 hover:bg-emerald-800 disabled:opacity-40"
           @click="bet({ type: b.type })">{{ b.label }}</button>
       </div>
     </section>
@@ -178,7 +186,7 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
           class="rounded-full border-2 px-3 py-2 text-xs font-bold"
           :class="amount === v ? 'border-amber-400 bg-amber-500/20 text-amber-300' : 'border-emerald-700 text-emerald-300 hover:bg-emerald-800'"
           @click="amount = v; sfx.click()">{{ v.toLocaleString() }}</button>
-        <button :disabled="state.phase !== 'betting'"
+        <button :disabled="state.phase !== 'betting' || sending"
           class="ml-auto rounded-lg bg-amber-500 px-4 py-2 text-sm font-black text-emerald-950 hover:bg-amber-400 disabled:opacity-40"
           @click="betInside">선택 번호에 베팅 ({{ selected.length }}개)</button>
       </div>

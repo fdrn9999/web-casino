@@ -7,9 +7,25 @@ const users = ref([])
 const detail = ref(null)
 const form = ref({ amount: '', reason: '' })
 const msg = ref('')
+const loading = ref(false)
+const error = ref('')
+
+const TYPE_LABELS = {
+  signup_bonus: '가입 보너스', daily_bonus: '출석 보너스', bankrupt_relief: '파산 구제',
+  bet: '베팅', payout: '당첨 지급', admin_grant: '운영자 지급', admin_confiscate: '운영자 몰수', jackpot: '잭팟',
+  attendance: '출석',
+}
 
 async function search() {
-  users.value = (await api(`/admin/users?q=${encodeURIComponent(q.value)}`)).users
+  loading.value = true
+  error.value = ''
+  try {
+    users.value = (await api(`/admin/users?q=${encodeURIComponent(q.value)}`)).users
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    loading.value = false
+  }
 }
 
 async function openDetail(id) {
@@ -49,7 +65,12 @@ onMounted(search)
       <button class="rounded-lg bg-emerald-700 px-4 text-sm hover:bg-emerald-600">검색</button>
     </form>
 
-    <div class="overflow-x-auto rounded-xl border border-emerald-800">
+    <p v-if="loading" class="text-sm text-emerald-300">불러오는 중…</p>
+    <div v-else-if="error" class="rounded-lg bg-red-950/50 p-3 text-sm text-red-300">
+      <p>{{ error }}</p>
+      <button class="mt-2 rounded-lg bg-red-800 px-4 py-1.5 text-xs font-bold text-white hover:bg-red-700" @click="search">다시 시도</button>
+    </div>
+    <div v-else class="overflow-x-auto rounded-xl border border-emerald-800">
       <table class="w-full min-w-[560px] text-sm">
         <thead class="bg-emerald-900/60 text-left text-emerald-300">
           <tr>
@@ -104,7 +125,7 @@ onMounted(search)
           <tbody>
             <tr v-for="t in detail.transactions" :key="t.id" class="border-t border-emerald-900">
               <td class="p-1.5 text-emerald-400">{{ t.created_at }}</td>
-              <td class="p-1.5">{{ t.type }}</td>
+              <td class="p-1.5">{{ TYPE_LABELS[t.type] ?? t.type }}</td>
               <td class="p-1.5" :class="t.amount >= 0 ? 'text-emerald-300' : 'text-red-400'">
                 {{ t.amount >= 0 ? '+' : '' }}{{ t.amount.toLocaleString() }}</td>
               <td class="p-1.5 text-emerald-400">{{ t.reason }}</td>
