@@ -22,7 +22,6 @@ const state = ref(null)
 const error = ref('')
 const sending = ref(false)
 const chipValue = ref(100) // 활성 칩(현재 선택된 베팅 단위)
-const selected = ref([])
 const cascade = ref(null)
 
 const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36])
@@ -37,6 +36,66 @@ const OUTSIDE_BUTTONS = [
 ]
 const TYPE_LABELS = Object.fromEntries(OUTSIDE_BUTTONS.map((b) => [b.type, b.label]))
 
+// --- 베팅 보드(펠트) 좌표 모델 ---
+// 3행(r=0 위쪽~2 아래쪽) x 12열(c=0~11) 그리드. number(r,c) = 3c + (3-r).
+// 0은 별도 칸으로 좌측(0열) 전체 높이를 차지 -> 전체 박스는 "13열 x 3행" 좌표계로 취급한다.
+function numberAt(r, c) { return 3 * c + (3 - r) }
+function sortNums(arr) { return [...arr].sort((a, b) => a - b) }
+const NUM_COLS = 12
+const colLeftX = (c) => ((c + 1) / 13) * 100 // 숫자열 c의 왼쪽 경계(%)
+const colRightX = (c) => ((c + 2) / 13) * 100 // 숫자열 c의 오른쪽 경계 = c+1열과의 경계(%)
+const colCenterX = (c) => ((c + 1.5) / 13) * 100
+const rowTopY = (r) => (r / 3) * 100
+const rowBottomY = (r) => ((r + 1) / 3) * 100
+const rowCenterY = (r) => ((r + 0.5) / 3) * 100
+const ZERO_EDGE_X = colLeftX(0) // 0열과 1열(숫자 col 0) 사이 경계
+
+// 스플릿(2) — 세로(같은 열, 인접 행) + 가로(같은 행, 인접 열) + 0-스플릿
+const SPLIT_HOTSPOTS = []
+for (let c = 0; c < NUM_COLS; c++) {
+  for (let r = 0; r < 2; r++) {
+    SPLIT_HOTSPOTS.push({ numbers: sortNums([numberAt(r, c), numberAt(r + 1, c)]), x: colCenterX(c), y: rowBottomY(r), edge: 'h' })
+  }
+}
+for (let c = 0; c < NUM_COLS - 1; c++) {
+  for (let r = 0; r < 3; r++) {
+    SPLIT_HOTSPOTS.push({ numbers: sortNums([numberAt(r, c), numberAt(r, c + 1)]), x: colRightX(c), y: rowCenterY(r), edge: 'v' })
+  }
+}
+SPLIT_HOTSPOTS.push({ numbers: [0, 1], x: ZERO_EDGE_X, y: rowCenterY(2), edge: 'v' })
+SPLIT_HOTSPOTS.push({ numbers: [0, 2], x: ZERO_EDGE_X, y: rowCenterY(1), edge: 'v' })
+SPLIT_HOTSPOTS.push({ numbers: [0, 3], x: ZERO_EDGE_X, y: rowCenterY(0), edge: 'v' })
+
+// 스트리트(3) — 각 열의 3칸 세로줄, 하단 바깥 경계에 핫스팟. 0-스트리트 2종 포함.
+const STREET_HOTSPOTS = []
+for (let c = 0; c < NUM_COLS; c++) {
+  STREET_HOTSPOTS.push({ numbers: sortNums([numberAt(0, c), numberAt(1, c), numberAt(2, c)]), x: colCenterX(c), y: rowBottomY(2) })
+}
+STREET_HOTSPOTS.push({ numbers: [0, 1, 2], x: ZERO_EDGE_X, y: rowBottomY(1) })
+STREET_HOTSPOTS.push({ numbers: [0, 2, 3], x: ZERO_EDGE_X, y: rowTopY(1) })
+
+// 코너(4) — 인접한 두 열 x 인접한 두 행이 만나는 내부 교차점마다 하나씩(11 x 2 = 22개)
+const CORNER_HOTSPOTS = []
+for (let c = 0; c < NUM_COLS - 1; c++) {
+  for (let r = 0; r < 2; r++) {
+    CORNER_HOTSPOTS.push({
+      numbers: sortNums([numberAt(r, c), numberAt(r, c + 1), numberAt(r + 1, c), numberAt(r + 1, c + 1)]),
+      x: colRightX(c),
+      y: rowBottomY(r),
+    })
+  }
+}
+
+// 라인/식스라인(6) — 인접한 두 스트리트(열 쌍), 하단 바깥 경계 중 두 열 사이 지점에 핫스팟
+const LINE_HOTSPOTS = []
+for (let c = 0; c < NUM_COLS - 1; c++) {
+  LINE_HOTSPOTS.push({
+    numbers: sortNums([numberAt(0, c), numberAt(1, c), numberAt(2, c), numberAt(0, c + 1), numberAt(1, c + 1), numberAt(2, c + 1)]),
+    x: colRightX(c),
+    y: rowBottomY(2),
+  })
+}
+
 const myBets = computed(() => state.value?.bets.filter((b) => b.nickname === auth.user?.nickname) ?? [])
 const myBetTotal = computed(() => myBets.value.reduce((sum, b) => sum + b.amount, 0))
 const limitLabel = computed(() =>
@@ -48,14 +107,23 @@ const myOutsideBetTotals = computed(() => {
   for (const b of myBets.value) if (b.type !== 'inside') totals[b.type] = (totals[b.type] ?? 0) + b.amount
   return totals
 })
-// 이번 라운드 내가 놓은 베팅별(번호) 누적액 — 칩 스택 표시용
-const myNumberBetTotals = computed(() => {
+// 이번 라운드 내가 놓은 인사이드 베팅의 "번호 조합(스팟)"별 누적액 — 칩 스택 표시용.
+// 스트레이트/스플릿/스트리트/코너/라인 각각을 numbers 배열(정렬 후 join)로 구분해 집계한다.
+function insideKey(numbers) { return sortNums(numbers).join(',') }
+const myInsideBetTotals = computed(() => {
   const totals = {}
   for (const b of myBets.value) {
-    if (b.type === 'inside') for (const n of b.numbers) totals[n] = (totals[n] ?? 0) + b.amount
+    if (b.type === 'inside') {
+      const key = insideKey(b.numbers)
+      totals[key] = (totals[key] ?? 0) + b.amount
+    }
   }
   return totals
 })
+function insideTotal(numbers) { return myInsideBetTotals.value[insideKey(numbers)] ?? 0 }
+function isWinningSpot(numbers) {
+  return state.value?.phase === 'result' && state.value.result !== null && numbers.includes(state.value.result) && insideTotal(numbers) > 0
+}
 
 // --- 직전 베팅 다시 걸기 ---
 const LAST_BET_KEY = `vegas:lastBet:roulette:${route.params.tableId}`
@@ -210,13 +278,6 @@ onUnmounted(() => {
   game.disconnect()
 })
 
-function toggleNumber(n) {
-  sfx.click()
-  const i = selected.value.indexOf(n)
-  if (i >= 0) selected.value.splice(i, 1)
-  else if (selected.value.length < 6) selected.value.push(n)
-}
-
 // 이번 배팅으로 해당 스팟의 누적액이 상위 액면으로 "자동 병합"되는 경계를 넘는지 판단한다
 // (예: 100짜리 4개 위에 1개를 더 얹어 총 500이 되는 순간 -> 500칩 스타일로 전환).
 function crossesDenomination(prevTotal, amt) {
@@ -224,7 +285,7 @@ function crossesDenomination(prevTotal, amt) {
 }
 function betCrossesDenomination(payload, amt) {
   if (payload.type === 'inside') {
-    return (payload.numbers ?? []).some((n) => crossesDenomination(myNumberBetTotals.value[n] ?? 0, amt))
+    return crossesDenomination(insideTotal(payload.numbers), amt)
   }
   return crossesDenomination(myOutsideBetTotals.value[payload.type] ?? 0, amt)
 }
@@ -242,7 +303,6 @@ async function placeBet(payload, amountOverride) {
     if (res.error) {
       error.value = res.error
     } else {
-      selected.value = []
       roundBets.value = [...roundBets.value, { ...payload, amount: amt }]
     }
   } finally {
@@ -250,12 +310,10 @@ async function placeBet(payload, amountOverride) {
   }
 }
 
-function betInside() {
-  if (![1, 2, 3, 4, 6].includes(selected.value.length)) {
-    error.value = '번호를 1·2·3·4·6개 선택하세요.'
-    return
-  }
-  placeBet({ type: 'inside', numbers: [...selected.value] })
+// 베팅판의 핫스팟(스트레이트/스플릿/스트리트/코너/라인) 클릭 시 즉시 인사이드 베팅을 넣는다.
+function placeInside(numbers) {
+  if (state.value?.phase !== 'betting' || sending.value) return
+  placeBet({ type: 'inside', numbers: sortNums(numbers) })
 }
 
 async function repeatLastBet() {
@@ -342,27 +400,69 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
       </div>
     </section>
 
-    <!-- 번호판 -->
+    <!-- 번호판(베팅 보드) -->
     <section class="rounded-2xl border border-emerald-800 bg-emerald-900/50 p-3">
-      <div class="grid grid-cols-13 gap-1" style="grid-template-columns: repeat(13, minmax(0, 1fr));">
-        <button class="relative col-span-1 row-span-3 rounded font-bold text-white"
-          :class="[colorClass(0), selected.includes(0) ? 'ring-2 ring-amber-400' : '', state.phase === 'result' && state.result === 0 ? 'fx-glow-win' : '']"
-          style="grid-row: span 3;" @click="toggleNumber(0)">0
-          <div v-if="myNumberBetTotals[0]" class="bet-chip-stack-pos">
-            <ChipStack :amount="myNumberBetTotals[0]" :size="14" :max-chips="4" :show-label="false" />
-          </div>
-        </button>
-        <template v-for="row in 3">
-          <button v-for="col in 12" :key="`${row}-${col}`"
-            class="relative aspect-square rounded text-xs font-bold text-white sm:text-sm"
-            :class="[colorClass((col - 1) * 3 + (4 - row)), selected.includes((col - 1) * 3 + (4 - row)) ? 'ring-2 ring-amber-400' : '', state.phase === 'result' && state.result === (col - 1) * 3 + (4 - row) ? 'fx-glow-win' : '']"
-            @click="toggleNumber((col - 1) * 3 + (4 - row))">
-            {{ (col - 1) * 3 + (4 - row) }}
-            <div v-if="myNumberBetTotals[(col - 1) * 3 + (4 - row)]" class="bet-chip-stack-pos">
-              <ChipStack :amount="myNumberBetTotals[(col - 1) * 3 + (4 - row)]" :size="14" :max-chips="4" :show-label="false" />
+      <div class="board-scroll">
+      <div class="board-min-width relative">
+        <div class="grid grid-cols-13 gap-1" style="grid-template-columns: repeat(13, minmax(0, 1fr));">
+          <button class="relative col-span-1 row-span-3 rounded font-bold text-white"
+            :disabled="sending || state.phase !== 'betting'"
+            :class="[colorClass(0), state.phase === 'result' && state.result === 0 ? 'fx-glow-win' : '']"
+            style="grid-row: span 3;" @click="placeInside([0])">0
+            <div v-if="insideTotal([0])" class="bet-chip-stack-pos">
+              <ChipStack :amount="insideTotal([0])" :size="14" :max-chips="4" :show-label="false" />
             </div>
           </button>
-        </template>
+          <template v-for="row in 3">
+            <button v-for="col in 12" :key="`${row}-${col}`"
+              class="relative aspect-square rounded text-xs font-bold text-white sm:text-sm"
+              :disabled="sending || state.phase !== 'betting'"
+              :class="[colorClass((col - 1) * 3 + (4 - row)), state.phase === 'result' && state.result === (col - 1) * 3 + (4 - row) ? 'fx-glow-win' : '']"
+              @click="placeInside([(col - 1) * 3 + (4 - row)])">
+              {{ (col - 1) * 3 + (4 - row) }}
+              <div v-if="insideTotal([(col - 1) * 3 + (4 - row)])" class="bet-chip-stack-pos">
+                <ChipStack :amount="insideTotal([(col - 1) * 3 + (4 - row)])" :size="14" :max-chips="4" :show-label="false" />
+              </div>
+            </button>
+          </template>
+        </div>
+
+        <!-- 번호 사이(스플릿/스트리트/코너/라인) 핫스팟 오버레이 -->
+        <div class="hotspot-layer">
+          <button v-for="h in SPLIT_HOTSPOTS" :key="`sp-${h.numbers.join('-')}`" type="button"
+            class="hotspot" :class="[h.edge === 'h' ? 'hotspot-edge-h' : 'hotspot-edge-v', { 'is-occupied': insideTotal(h.numbers) > 0, 'fx-glow-win': isWinningSpot(h.numbers) }]"
+            :style="{ left: h.x + '%', top: h.y + '%' }"
+            :disabled="sending || state.phase !== 'betting'"
+            :aria-label="`스플릿 베팅 ${h.numbers.join('-')}`"
+            @click="placeInside(h.numbers)">
+            <ChipStack v-if="insideTotal(h.numbers)" :amount="insideTotal(h.numbers)" :size="12" :max-chips="3" :show-label="false" class="hotspot-chipstack" />
+          </button>
+          <button v-for="h in STREET_HOTSPOTS" :key="`st-${h.numbers.join('-')}`" type="button"
+            class="hotspot hotspot-edge-h" :class="{ 'is-occupied': insideTotal(h.numbers) > 0, 'fx-glow-win': isWinningSpot(h.numbers) }"
+            :style="{ left: h.x + '%', top: h.y + '%' }"
+            :disabled="sending || state.phase !== 'betting'"
+            :aria-label="`스트리트 베팅 ${h.numbers.join('-')}`"
+            @click="placeInside(h.numbers)">
+            <ChipStack v-if="insideTotal(h.numbers)" :amount="insideTotal(h.numbers)" :size="12" :max-chips="3" :show-label="false" class="hotspot-chipstack" />
+          </button>
+          <button v-for="h in CORNER_HOTSPOTS" :key="`co-${h.numbers.join('-')}`" type="button"
+            class="hotspot hotspot-corner" :class="{ 'is-occupied': insideTotal(h.numbers) > 0, 'fx-glow-win': isWinningSpot(h.numbers) }"
+            :style="{ left: h.x + '%', top: h.y + '%' }"
+            :disabled="sending || state.phase !== 'betting'"
+            :aria-label="`코너 베팅 ${h.numbers.join('-')}`"
+            @click="placeInside(h.numbers)">
+            <ChipStack v-if="insideTotal(h.numbers)" :amount="insideTotal(h.numbers)" :size="12" :max-chips="3" :show-label="false" class="hotspot-chipstack" />
+          </button>
+          <button v-for="h in LINE_HOTSPOTS" :key="`li-${h.numbers.join('-')}`" type="button"
+            class="hotspot hotspot-line" :class="{ 'is-occupied': insideTotal(h.numbers) > 0, 'fx-glow-win': isWinningSpot(h.numbers) }"
+            :style="{ left: h.x + '%', top: h.y + '%' }"
+            :disabled="sending || state.phase !== 'betting'"
+            :aria-label="`라인 베팅 ${h.numbers.join('-')}`"
+            @click="placeInside(h.numbers)">
+            <ChipStack v-if="insideTotal(h.numbers)" :amount="insideTotal(h.numbers)" :size="12" :max-chips="3" :show-label="false" class="hotspot-chipstack" />
+          </button>
+        </div>
+      </div>
       </div>
       <div class="mt-2 flex flex-wrap gap-1">
         <button v-for="b in OUTSIDE_BUTTONS" :key="b.type" :disabled="sending || state.phase !== 'betting'"
@@ -382,9 +482,7 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
           class="rounded-lg border border-amber-500/50 px-3 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-30"
           :title="canRepeatLastBet ? `직전 베팅 재현 (총 ${lastRoundTotal.toLocaleString()}칩)` : '재현할 직전 베팅이 없거나 잔액이 부족합니다.'"
           @click="repeatLastBet">↺ 직전 베팅</button>
-        <button :disabled="state.phase !== 'betting' || sending"
-          class="ml-auto rounded-lg bg-amber-500 px-4 py-2 text-sm font-black text-emerald-950 hover:bg-amber-400 disabled:opacity-40"
-          @click="betInside">선택 번호에 베팅 ({{ selected.length }}개)</button>
+        <span class="ml-auto text-xs text-emerald-400/80">번호·번호 사이(스플릿/스트리트/코너/라인)를 클릭하면 즉시 베팅됩니다</span>
       </div>
       <p v-if="error" class="mt-2 text-sm text-red-400">{{ error }}</p>
       <div v-if="state.bets.length" class="mt-3 max-h-32 overflow-y-auto text-xs text-emerald-300">
@@ -441,10 +539,90 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
   transform: scale(0.92);
 }
 
+/* 베팅 보드: 가장 좁은 화면에서만 이 컨테이너 안에서 가로 스크롤(페이지 전체는 스크롤되지 않음) */
+.board-scroll {
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: 6px;
+}
+.board-min-width {
+  min-width: 340px;
+  margin-bottom: 6px; /* 하단 바깥 경계(스트리트/라인) 핫스팟이 살짝 튀어나올 여유 공간 */
+}
+
+/* 번호 사이(스플릿/스트리트/코너/라인) 핫스팟 오버레이 —
+   그리드와 정확히 같은 박스(13열 x 3행)를 덮는 절대 위치 레이어. 레이어 자체는 클릭을 통과시키고
+   각 핫스팟 버튼만 클릭을 받아, 숫자 칸의 스트레이트 베팅 클릭을 가리지 않는다. */
+.hotspot-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.hotspot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  opacity: 0.32;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 6;
+  padding: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+.hotspot:hover:not(:disabled),
+.hotspot:focus-visible {
+  opacity: 1;
+  background: rgba(251, 191, 36, 0.4);
+  border-color: rgba(251, 191, 36, 0.8);
+}
+.hotspot.is-occupied {
+  opacity: 0.95;
+  background: rgba(251, 191, 36, 0.22);
+  border-color: rgba(251, 191, 36, 0.65);
+}
+.hotspot:disabled {
+  cursor: not-allowed;
+}
+/* 호버가 없는 터치 기기에서는 완전히 숨기지 않고 항상 어느 정도 보이게 한다 */
+@media (hover: none) {
+  .hotspot { opacity: 0.5; }
+  .hotspot.is-occupied { opacity: 0.95; }
+}
+.hotspot-edge-h {
+  width: 24px;
+  height: 11px;
+  border-radius: 5px;
+}
+.hotspot-edge-v {
+  width: 11px;
+  height: 24px;
+  border-radius: 5px;
+}
+.hotspot-corner {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+}
+.hotspot-line {
+  width: 30px;
+  height: 11px;
+  border-radius: 5px;
+}
+.hotspot-chipstack {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -75%);
+  pointer-events: none;
+  z-index: 7;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wheel-disc > div,
   .ball-rotor,
-  .ball-dot {
+  .ball-dot,
+  .hotspot {
     transition: none !important;
   }
 }
