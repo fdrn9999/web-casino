@@ -68,10 +68,10 @@ onUnmounted(() => raf && cancelAnimationFrame(raf))
 </template>
 
 <style scoped>
-/* 시간이 촉박해지면(≤25%) 전체 타이머가 급박하게 맥동한다 */
+/* 촉박해지면(≤25%) 크기는 그대로 두고 밝기/발광만 맥동해 급박함을 준다(레이아웃 불변) */
 @keyframes timer-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.03); opacity: 0.82; }
+  0%, 100% { opacity: 1; filter: none; }
+  50% { opacity: 0.7; filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.8)); }
 }
 .timer-urgent {
   animation: timer-pulse 0.55s ease-in-out infinite;
