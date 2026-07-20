@@ -4,6 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import PhaseTimer from '../components/PhaseTimer.vue'
 import TableChat from '../components/TableChat.vue'
 import TableHud from '../components/TableHud.vue'
+import ChipTray from '../components/ChipTray.vue'
+import CasinoChip from '../components/CasinoChip.vue'
+import WinCascade from '../components/WinCascade.vue'
+import { chipStyleFor, formatChipLabel } from '../lib/chips'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
@@ -17,8 +21,9 @@ const game = useGameSocket('roulette')
 const state = ref(null)
 const error = ref('')
 const sending = ref(false)
-const amount = ref(100)
+const chipValue = ref(100) // 활성 칩(현재 선택된 베팅 단위)
 const selected = ref([])
+const cascade = ref(null)
 
 const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36])
 const colorClass = (n) => (n === 0 ? 'bg-emerald-600' : RED.has(n) ? 'bg-red-700' : 'bg-neutral-900')
@@ -30,13 +35,43 @@ const OUTSIDE_BUTTONS = [
   { type: 'dozen1', label: '1st 12' }, { type: 'dozen2', label: '2nd 12' }, { type: 'dozen3', label: '3rd 12' },
   { type: 'col1', label: '1열' }, { type: 'col2', label: '2열' }, { type: 'col3', label: '3열' },
 ]
-const CHIPS = [100, 500, 1000, 5000]
 const TYPE_LABELS = Object.fromEntries(OUTSIDE_BUTTONS.map((b) => [b.type, b.label]))
 
 const myBets = computed(() => state.value?.bets.filter((b) => b.nickname === auth.user?.nickname) ?? [])
 const myBetTotal = computed(() => myBets.value.reduce((sum, b) => sum + b.amount, 0))
 const limitLabel = computed(() =>
   state.value ? `${state.value.rules.minBet.toLocaleString()}~${state.value.rules.maxBet.toLocaleString()}칩` : ''
+)
+// 이번 라운드 내가 놓은 베팅별(아웃사이드 타입) 누적액 — 칩 스택 표시용
+const myOutsideBetTotals = computed(() => {
+  const totals = {}
+  for (const b of myBets.value) if (b.type !== 'inside') totals[b.type] = (totals[b.type] ?? 0) + b.amount
+  return totals
+})
+// 이번 라운드 내가 놓은 베팅별(번호) 누적액 — 칩 스택 표시용
+const myNumberBetTotals = computed(() => {
+  const totals = {}
+  for (const b of myBets.value) {
+    if (b.type === 'inside') for (const n of b.numbers) totals[n] = (totals[n] ?? 0) + b.amount
+  }
+  return totals
+})
+
+// --- 직전 베팅 다시 걸기 ---
+const LAST_BET_KEY = `vegas:lastBet:roulette:${route.params.tableId}`
+const roundBets = ref([]) // 이번 베팅 페이즈 동안 내가 실제로 성공시킨 베팅들
+const lastRoundBets = ref(loadLastBets())
+function loadLastBets() {
+  try {
+    const raw = localStorage.getItem(LAST_BET_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+const lastRoundTotal = computed(() => lastRoundBets.value.reduce((sum, b) => sum + b.amount, 0))
+const canRepeatLastBet = computed(() =>
+  lastRoundBets.value.length > 0 && lastRoundTotal.value > 0 && lastRoundTotal.value <= (auth.user?.balance ?? 0)
 )
 
 // 유러피언 휠 실제 배치 순서
@@ -149,8 +184,23 @@ onMounted(async () => {
       if (myBets.value.length > 0) {
         // 내 베팅 중 하나라도 결과 번호에 적중했으면 승리음, 아니면 패배음
         const hit = myBets.value.some((b) => b.type === 'inside' && b.numbers?.includes(s.result))
-        ;(hit ? sfx.win : sfx.lose)()
+        if (hit) {
+          sfx.win()
+          cascade.value?.burst()
+        } else {
+          sfx.lose()
+        }
       }
+    }
+    // 베팅 페이즈가 끝나는 시점에 이번 라운드 베팅 내역을 "직전 베팅"으로 저장
+    if (state.value?.phase === 'betting' && s.phase !== 'betting' && roundBets.value.length > 0) {
+      lastRoundBets.value = roundBets.value
+      try {
+        localStorage.setItem(LAST_BET_KEY, JSON.stringify(roundBets.value))
+      } catch {
+        // 저장 실패는 무시(사생활 모드 등)
+      }
+      roundBets.value = []
     }
     state.value = s
   })
@@ -167,16 +217,21 @@ function toggleNumber(n) {
   else if (selected.value.length < 6) selected.value.push(n)
 }
 
-async function bet(payload) {
+async function placeBet(payload, amountOverride) {
   // 라운드트립 중 중복 클릭 방지 (서버도 중복은 거부하지만 불필요한 요청/에러 노이즈를 줄임)
   if (sending.value) return
   sending.value = true
   error.value = ''
+  const amt = amountOverride ?? chipValue.value
   sfx.chip()
   try {
-    const res = await game.emitAck('bet:place', { ...payload, amount: amount.value })
-    if (res.error) error.value = res.error
-    else selected.value = []
+    const res = await game.emitAck('bet:place', { ...payload, amount: amt })
+    if (res.error) {
+      error.value = res.error
+    } else {
+      selected.value = []
+      roundBets.value = [...roundBets.value, { ...payload, amount: amt }]
+    }
   } finally {
     sending.value = false
   }
@@ -187,14 +242,23 @@ function betInside() {
     error.value = '번호를 1·2·3·4·6개 선택하세요.'
     return
   }
-  bet({ type: 'inside', numbers: [...selected.value] })
+  placeBet({ type: 'inside', numbers: [...selected.value] })
+}
+
+async function repeatLastBet() {
+  if (!canRepeatLastBet.value || sending.value) return
+  for (const b of lastRoundBets.value) {
+    // eslint-disable-next-line no-await-in-loop
+    await placeBet({ type: b.type, numbers: b.numbers }, b.amount)
+    if (error.value) break
+  }
 }
 
 const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinning: '스핀!', result: '결과' }
 </script>
 
 <template>
-  <div v-if="state" class="mx-auto max-w-4xl space-y-4 pb-20">
+  <div v-if="state" class="mx-auto max-w-4xl space-y-4 pb-20 lg:mr-80">
     <div class="flex flex-wrap items-center gap-2">
       <h1 class="text-lg font-bold text-amber-400">🎡 {{ state.name }}</h1>
       <span class="rounded-full bg-emerald-800 px-2 py-0.5 text-xs">{{ PHASE_LABELS[state.phase] }}</span>
@@ -263,32 +327,45 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
     <!-- 번호판 -->
     <section class="rounded-2xl border border-emerald-800 bg-emerald-900/50 p-3">
       <div class="grid grid-cols-13 gap-1" style="grid-template-columns: repeat(13, minmax(0, 1fr));">
-        <button class="col-span-1 row-span-3 rounded font-bold text-white"
+        <button class="relative col-span-1 row-span-3 rounded font-bold text-white"
           :class="[colorClass(0), selected.includes(0) ? 'ring-2 ring-amber-400' : '', state.phase === 'result' && state.result === 0 ? 'fx-glow-win' : '']"
-          style="grid-row: span 3;" @click="toggleNumber(0)">0</button>
+          style="grid-row: span 3;" @click="toggleNumber(0)">0
+          <span v-if="myNumberBetTotals[0]" class="bet-chip-badge"
+            :style="{ background: chipStyleFor(myNumberBetTotals[0]).base, color: chipStyleFor(myNumberBetTotals[0]).text }">
+            {{ formatChipLabel(myNumberBetTotals[0]) }}</span>
+        </button>
         <template v-for="row in 3">
           <button v-for="col in 12" :key="`${row}-${col}`"
-            class="aspect-square rounded text-xs font-bold text-white sm:text-sm"
+            class="relative aspect-square rounded text-xs font-bold text-white sm:text-sm"
             :class="[colorClass((col - 1) * 3 + (4 - row)), selected.includes((col - 1) * 3 + (4 - row)) ? 'ring-2 ring-amber-400' : '', state.phase === 'result' && state.result === (col - 1) * 3 + (4 - row) ? 'fx-glow-win' : '']"
             @click="toggleNumber((col - 1) * 3 + (4 - row))">
             {{ (col - 1) * 3 + (4 - row) }}
+            <span v-if="myNumberBetTotals[(col - 1) * 3 + (4 - row)]" class="bet-chip-badge"
+              :style="{ background: chipStyleFor(myNumberBetTotals[(col - 1) * 3 + (4 - row)]).base, color: chipStyleFor(myNumberBetTotals[(col - 1) * 3 + (4 - row)]).text }">
+              {{ formatChipLabel(myNumberBetTotals[(col - 1) * 3 + (4 - row)]) }}</span>
           </button>
         </template>
       </div>
       <div class="mt-2 flex flex-wrap gap-1">
-        <button v-for="b in OUTSIDE_BUTTONS" :key="b.type" :disabled="sending"
-          class="rounded bg-emerald-950 px-2 py-1.5 text-xs text-emerald-200 hover:bg-emerald-800 disabled:opacity-40"
-          @click="bet({ type: b.type })">{{ b.label }}</button>
+        <button v-for="b in OUTSIDE_BUTTONS" :key="b.type" :disabled="sending || state.phase !== 'betting'"
+          class="flex flex-col items-center gap-0.5 rounded bg-emerald-950 px-2 py-1.5 text-xs text-emerald-200 hover:bg-emerald-800 disabled:opacity-40"
+          @click="placeBet({ type: b.type })">
+          <span>{{ b.label }}</span>
+          <span v-if="myOutsideBetTotals[b.type]" class="flex items-center gap-0.5 text-[10px] text-amber-300">
+            <CasinoChip :value="myOutsideBetTotals[b.type]" :size="14" />{{ myOutsideBetTotals[b.type].toLocaleString() }}
+          </span>
+        </button>
       </div>
     </section>
 
     <!-- 조작 -->
     <section class="rounded-2xl border border-emerald-800 bg-emerald-900/50 p-4">
-      <div class="flex flex-wrap items-center gap-2">
-        <button v-for="v in CHIPS" :key="v"
-          class="rounded-full border-2 px-3 py-2 text-xs font-bold"
-          :class="amount === v ? 'border-amber-400 bg-amber-500/20 text-amber-300' : 'border-emerald-700 text-emerald-300 hover:bg-emerald-800'"
-          @click="amount = v; sfx.click()">{{ v.toLocaleString() }}</button>
+      <div class="flex flex-wrap items-end gap-3">
+        <ChipTray v-model="chipValue" :disabled="state.phase !== 'betting' || sending" />
+        <button v-if="state.phase === 'betting'" :disabled="!canRepeatLastBet || sending"
+          class="rounded-lg border border-amber-500/50 px-3 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-30"
+          :title="canRepeatLastBet ? `직전 베팅 재현 (총 ${lastRoundTotal.toLocaleString()}칩)` : '재현할 직전 베팅이 없거나 잔액이 부족합니다.'"
+          @click="repeatLastBet">↺ 직전 베팅</button>
         <button :disabled="state.phase !== 'betting' || sending"
           class="ml-auto rounded-lg bg-amber-500 px-4 py-2 text-sm font-black text-emerald-950 hover:bg-amber-400 disabled:opacity-40"
           @click="betInside">선택 번호에 베팅 ({{ selected.length }}개)</button>
@@ -302,7 +379,10 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
       </div>
     </section>
 
-    <TableChat :game="game" />
+    <div class="mt-6 lg:mt-0">
+      <TableChat :game="game" />
+    </div>
+    <WinCascade ref="cascade" />
     <TableHud :balance="auth.user?.balance ?? 0" :my-bet="myBetTotal" :status-label="PHASE_LABELS[state.phase]" :limit-label="limitLabel" />
   </div>
 </template>
@@ -331,6 +411,19 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
 }
 .ball-dot.no-transition {
   transition: none !important;
+}
+
+.bet-chip-badge {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 2px 3px;
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
 @media (prefers-reduced-motion: reduce) {

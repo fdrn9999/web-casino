@@ -58,6 +58,12 @@ export const sfx = {
     tone({ freq: 220, duration: 0.35, type: 'sine', volume: 0.1, when: 0.18 })
   },
   countdown: () => tone({ freq: 1000, duration: 0.08, type: 'sine', volume: 0.1 }),
+  // 승리 시 칩이 잔액으로 촤라락 쏟아지는 연출용 짧은 반짝임 사운드
+  cascade: () => {
+    for (let i = 0; i < 7; i++) {
+      tone({ freq: 1300 + Math.random() * 900, duration: 0.06, type: 'triangle', volume: 0.07, when: i * 0.055 })
+    }
+  },
 }
 
 let jackpotAudio = null
