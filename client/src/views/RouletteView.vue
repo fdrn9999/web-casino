@@ -284,11 +284,13 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
             transitionDuration: wheelSpinning && !reducedMotion ? `${(state.rules.spinSeconds - 0.5)}s` : '0ms',
             transitionTimingFunction: 'cubic-bezier(0.15, 0.6, 0.15, 1)',
           }">
+          <!-- 각 포켓의 방사 지점(중심)에 0크기 앵커를 두고, 그 위에 숫자를 중앙정렬.
+               숫자는 포켓과 함께 회전하며 top이 바깥(림)을 향하는 실제 룰렛식 방사 배치. -->
           <div v-for="(n, i) in WHEEL_ORDER" :key="n"
-            class="absolute left-1/2 top-1/2 origin-top-left"
-            :style="{ transform: `rotate(${i * SEG - 90}deg) translateX(calc(var(--size) * 0.40)) rotate(90deg)` }">
-            <span class="pocket-num block text-[11px] font-black leading-none text-white sm:text-xs"
-              :class="state.phase === 'result' && n === state.result ? 'fx-glow-win rounded-full bg-amber-400/30 px-1' : ''">{{ n }}</span>
+            class="absolute left-1/2 top-1/2 h-0 w-0"
+            :style="{ transform: `rotate(${i * SEG}deg) translateY(calc(var(--size) * -0.34))` }">
+            <span class="pocket-num absolute left-0 top-0 block -translate-x-1/2 -translate-y-1/2 text-xs font-black leading-none text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)] sm:text-sm"
+              :class="state.phase === 'result' && n === state.result ? 'fx-glow-win rounded-full bg-amber-400/40 px-1' : ''">{{ n }}</span>
           </div>
         </div>
 
