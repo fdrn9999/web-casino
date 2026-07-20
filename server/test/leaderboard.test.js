@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import express from 'express'
 import request from 'supertest'
 import { createDb } from '../src/db/index.js'
 import { createApp } from '../src/app.js'
 import { ensureAdmin } from '../src/services/bootstrap.js'
 import { applyTransaction } from '../src/services/wallet.js'
+import { leaderboardRouter } from '../src/routes/leaderboard.js'
 
 describe('leaderboard (명예의 전당)', () => {
   let db, app, token
@@ -71,5 +73,13 @@ describe('leaderboard (명예의 전당)', () => {
 
   it('미로그인은 401', async () => {
     expect((await request(app).get('/api/leaderboard')).status).toBe(401)
+  })
+
+  it('라우터 자체가 미인증을 401로 막는다 (격리)', async () => {
+    const bare = express()
+    bare.use(express.json())
+    bare.use('/api/leaderboard', leaderboardRouter(db))
+    const res = await request(bare).get('/api/leaderboard')
+    expect(res.status).toBe(401)
   })
 })

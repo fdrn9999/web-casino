@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import express from 'express'
 import request from 'supertest'
 import { createDb } from '../src/db/index.js'
 import { createApp } from '../src/app.js'
 import { applyTransaction } from '../src/services/wallet.js'
+import { meStatsRouter } from '../src/routes/me-stats.js'
 
 describe('me stats', () => {
   let db, app, token, userId
@@ -28,5 +30,13 @@ describe('me stats', () => {
 
   it('미로그인은 401', async () => {
     expect((await request(app).get('/api/me/stats')).status).toBe(401)
+  })
+
+  it('라우터 자체가 미인증을 401로 막는다 (격리)', async () => {
+    const bare = express()
+    bare.use(express.json())
+    bare.use('/api/me/stats', meStatsRouter(db))
+    const res = await request(bare).get('/api/me/stats')
+    expect(res.status).toBe(401)
   })
 })
