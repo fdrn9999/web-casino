@@ -25,37 +25,53 @@ export function slotsRouter(db, { rng = Math.random } = {}) {
       return res.status(400).json({ error: `베팅은 ${s.minBet}~${s.maxBet}칩, ${s.betStep}칩 단위여야 합니다.` })
     }
 
-    const { lastInsertRowid: roundId } = db.prepare("INSERT INTO rounds (game) VALUES ('slots')").run()
-    let balance
-    try {
-      balance = applyTransaction(db, {
+    const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id)
+    if (!user || user.balance < bet) {
+      return res.status(400).json({ error: '칩이 부족합니다.' })
+    }
+
+    const symbols = spin(rng)
+    const result = evaluate(symbols, bet)
+
+    // Single atomic transaction: round row is only created/persisted as part of the
+    // same money-moving sequence, so a mid-sequence failure can't leave a half-updated
+    // state or an orphaned round. applyTransaction/winJackpot nest via SAVEPOINT.
+    const runSpin = db.transaction(() => {
+      const { lastInsertRowid: roundId } = db.prepare("INSERT INTO rounds (game) VALUES ('slots')").run()
+
+      let balance = applyTransaction(db, {
         userId: req.user.id, type: 'bet', amount: -bet, game: 'slots', refRoundId: roundId,
       }).balanceAfter
+
+      contributeJackpot(db, bet, s.jackpotRate)
+
+      if (result.payout > 0) {
+        balance = applyTransaction(db, {
+          userId: req.user.id, type: 'payout', amount: result.payout, game: 'slots', refRoundId: roundId,
+        }).balanceAfter
+      }
+
+      let jackpotAmount = 0
+      if (result.isJackpot) {
+        jackpotAmount = winJackpot(db, req.user.id)
+        balance = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id).balance
+      }
+
+      db.prepare("UPDATE rounds SET result_json = ?, ended_at = datetime('now') WHERE id = ?")
+        .run(JSON.stringify({ symbols, ...result, jackpotAmount }), roundId)
+      db.prepare('INSERT INTO bets (round_id, user_id, bet_json, amount, payout) VALUES (?, ?, ?, ?, ?)')
+        .run(roundId, req.user.id, JSON.stringify({ bet }), bet, result.payout + jackpotAmount)
+
+      return { balance, jackpotAmount }
+    })
+
+    let balance, jackpotAmount
+    try {
+      ;({ balance, jackpotAmount } = runSpin())
     } catch (e) {
       if (e instanceof InsufficientBalanceError) return res.status(400).json({ error: e.message })
       throw e
     }
-
-    contributeJackpot(db, bet, s.jackpotRate)
-    const symbols = spin(rng)
-    const result = evaluate(symbols, bet)
-
-    if (result.payout > 0) {
-      balance = applyTransaction(db, {
-        userId: req.user.id, type: 'payout', amount: result.payout, game: 'slots', refRoundId: roundId,
-      }).balanceAfter
-    }
-
-    let jackpotAmount = 0
-    if (result.isJackpot) {
-      jackpotAmount = winJackpot(db, req.user.id)
-      balance = db.prepare('SELECT balance FROM users WHERE id = ?').get(req.user.id).balance
-    }
-
-    db.prepare("UPDATE rounds SET result_json = ?, ended_at = datetime('now') WHERE id = ?")
-      .run(JSON.stringify({ symbols, ...result, jackpotAmount }), roundId)
-    db.prepare('INSERT INTO bets (round_id, user_id, bet_json, amount, payout) VALUES (?, ?, ?, ?, ?)')
-      .run(roundId, req.user.id, JSON.stringify({ bet }), bet, result.payout + jackpotAmount)
 
     res.json({
       symbols,

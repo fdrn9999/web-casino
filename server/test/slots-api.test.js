@@ -84,4 +84,17 @@ describe('slots api', () => {
     expect(db.prepare("SELECT COUNT(*) c FROM rounds WHERE game = 'slots'").get().c).toBe(1)
     expect(db.prepare('SELECT amount, payout FROM bets').get()).toEqual({ amount: 100, payout: 0 })
   })
+
+  it('잔액 부족 스핀은 400이며 orphaned round를 남기지 않는다', async () => {
+    const app = appWithRng(db, [idxCherry, idxBell, idxStar])
+    await signup(app)
+    const { id: userId } = db.prepare('SELECT id FROM users WHERE username = ?').get('spinner1')
+    db.prepare('UPDATE users SET balance = 50 WHERE id = ?').run(userId)
+    const res = await request(app).post('/api/slots/spin')
+      .set('Authorization', `Bearer ${token}`).send({ bet: 100 })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('칩이 부족합니다.')
+    expect(db.prepare("SELECT COUNT(*) c FROM rounds WHERE game = 'slots'").get().c).toBe(0)
+    expect(db.prepare('SELECT COUNT(*) c FROM bets').get().c).toBe(0)
+  })
 })

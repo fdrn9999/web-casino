@@ -32,11 +32,18 @@ export function economyRouter(db) {
       cooldownRemainingSec = Math.max(0, Math.ceil(eco.reliefCooldownMin * 60 - elapsed))
     }
     let reasonIfNot = null
-    if (row.balance >= eco.reliefThreshold) reasonIfNot = `잔액이 ${eco.reliefThreshold}칩 이상이면 구제를 받을 수 없습니다.`
-    else if (cooldownRemainingSec > 0) reasonIfNot = '쿨다운이 끝나지 않았습니다.'
+    let code = null
+    if (row.balance >= eco.reliefThreshold) {
+      reasonIfNot = `잔액이 ${eco.reliefThreshold}칩 이상이면 구제를 받을 수 없습니다.`
+      code = 400
+    } else if (cooldownRemainingSec > 0) {
+      reasonIfNot = '쿨다운이 끝나지 않았습니다.'
+      code = 429
+    }
     return {
       eligible: !reasonIfNot,
       reasonIfNot,
+      code,
       cooldownRemainingSec,
       netLoss,
       bankruptCount: row.bankrupt_count,
@@ -50,8 +57,7 @@ export function economyRouter(db) {
   r.post('/relief', (req, res) => {
     const st = reliefStatus(db, req.user)
     if (!st.eligible) {
-      const code = st.cooldownRemainingSec > 0 && st.balance < getSettings(db, 'economy').reliefThreshold ? 429 : 400
-      return res.status(code).json({ error: st.reasonIfNot })
+      return res.status(st.code).json({ error: st.reasonIfNot })
     }
     db.prepare("UPDATE users SET last_relief_at = datetime('now'), bankrupt_count = bankrupt_count + 1 WHERE id = ?")
       .run(req.user.id)
