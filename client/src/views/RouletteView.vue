@@ -258,7 +258,10 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
 </script>
 
 <template>
-  <div v-if="state" class="mx-auto max-w-4xl space-y-4 pb-20 lg:mr-80">
+  <div v-if="state" class="pb-20">
+  <div class="mx-auto flex max-w-7xl flex-col gap-4 lg:flex-row lg:items-start">
+    <div class="min-w-0 flex-1">
+    <div class="mx-auto max-w-4xl space-y-4">
     <div class="flex flex-wrap items-center gap-2">
       <h1 class="text-lg font-bold text-amber-400">🎡 {{ state.name }}</h1>
       <span class="rounded-full bg-emerald-800 px-2 py-0.5 text-xs">{{ PHASE_LABELS[state.phase] }}</span>
@@ -380,9 +383,12 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
         </p>
       </div>
     </section>
+    </div>
+    </div>
 
-    <div class="mt-6 lg:mt-0">
+    <div class="lg:w-72 lg:shrink-0">
       <TableChat :game="game" />
+    </div>
     </div>
     <WinCascade ref="cascade" />
     <TableHud :balance="auth.user?.balance ?? 0" :my-bet="myBetTotal" :status-label="PHASE_LABELS[state.phase]" :limit-label="limitLabel" />

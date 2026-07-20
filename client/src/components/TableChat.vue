@@ -58,7 +58,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="lg:fixed lg:right-3 lg:top-20 lg:bottom-24 lg:z-30 lg:w-72">
+  <div class="lg:sticky lg:top-20 lg:h-[calc(100vh-11rem)]">
     <div class="rounded-2xl border border-amber-500/30 bg-emerald-950/95 shadow-lg backdrop-blur lg:flex lg:h-full lg:flex-col">
       <button type="button"
         class="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-xs font-bold text-amber-300"

@@ -376,7 +376,10 @@ function doAction(move) {
 </script>
 
 <template>
-  <div v-if="state" class="mx-auto max-w-5xl space-y-4 pb-20 lg:mr-80">
+  <div v-if="state" class="pb-20">
+  <div class="mx-auto flex max-w-7xl flex-col gap-4 lg:flex-row lg:items-start">
+    <div class="min-w-0 flex-1">
+    <div class="mx-auto max-w-5xl space-y-4">
     <div class="flex flex-wrap items-center gap-2">
       <h1 class="text-lg font-bold text-amber-400">🃏 {{ state.name }}</h1>
       <span class="rounded-full bg-emerald-800 px-2 py-0.5 text-xs text-emerald-200">{{ PHASE_LABELS[state.phase] }}</span>
@@ -488,9 +491,12 @@ function doAction(move) {
       <p v-if="error" class="mt-2 text-center text-sm text-red-400">{{ error }}</p>
     </section>
     <p v-else class="text-center text-sm text-emerald-400">빈 좌석을 눌러 참가하세요.</p>
+    </div>
+    </div>
 
-    <div class="mt-6 lg:mt-0">
+    <div class="lg:w-72 lg:shrink-0">
       <TableChat :game="game" />
+    </div>
     </div>
     <WinCascade ref="cascade" />
     <TableHud :balance="auth.user?.balance ?? 0" :my-bet="myBet" :status-label="PHASE_LABELS[state.phase]" :limit-label="limitLabel" />
