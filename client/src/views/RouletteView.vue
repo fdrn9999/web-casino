@@ -5,9 +5,9 @@ import PhaseTimer from '../components/PhaseTimer.vue'
 import TableChat from '../components/TableChat.vue'
 import TableHud from '../components/TableHud.vue'
 import ChipTray from '../components/ChipTray.vue'
-import CasinoChip from '../components/CasinoChip.vue'
+import ChipStack from '../components/ChipStack.vue'
 import WinCascade from '../components/WinCascade.vue'
-import { chipStyleFor, formatChipLabel } from '../lib/chips'
+import { chipStyleFor } from '../lib/chips'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
@@ -217,6 +217,18 @@ function toggleNumber(n) {
   else if (selected.value.length < 6) selected.value.push(n)
 }
 
+// 이번 배팅으로 해당 스팟의 누적액이 상위 액면으로 "자동 병합"되는 경계를 넘는지 판단한다
+// (예: 100짜리 4개 위에 1개를 더 얹어 총 500이 되는 순간 -> 500칩 스타일로 전환).
+function crossesDenomination(prevTotal, amt) {
+  return chipStyleFor(prevTotal) !== chipStyleFor(prevTotal + amt)
+}
+function betCrossesDenomination(payload, amt) {
+  if (payload.type === 'inside') {
+    return (payload.numbers ?? []).some((n) => crossesDenomination(myNumberBetTotals.value[n] ?? 0, amt))
+  }
+  return crossesDenomination(myOutsideBetTotals.value[payload.type] ?? 0, amt)
+}
+
 async function placeBet(payload, amountOverride) {
   // 라운드트립 중 중복 클릭 방지 (서버도 중복은 거부하지만 불필요한 요청/에러 노이즈를 줄임)
   if (sending.value) return
@@ -224,6 +236,7 @@ async function placeBet(payload, amountOverride) {
   error.value = ''
   const amt = amountOverride ?? chipValue.value
   sfx.chip()
+  if (betCrossesDenomination(payload, amt)) sfx.chipStack()
   try {
     const res = await game.emitAck('bet:place', { ...payload, amount: amt })
     if (res.error) {
@@ -335,9 +348,9 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
         <button class="relative col-span-1 row-span-3 rounded font-bold text-white"
           :class="[colorClass(0), selected.includes(0) ? 'ring-2 ring-amber-400' : '', state.phase === 'result' && state.result === 0 ? 'fx-glow-win' : '']"
           style="grid-row: span 3;" @click="toggleNumber(0)">0
-          <span v-if="myNumberBetTotals[0]" class="bet-chip-badge"
-            :style="{ background: chipStyleFor(myNumberBetTotals[0]).base, color: chipStyleFor(myNumberBetTotals[0]).text }">
-            {{ formatChipLabel(myNumberBetTotals[0]) }}</span>
+          <div v-if="myNumberBetTotals[0]" class="bet-chip-stack-pos">
+            <ChipStack :amount="myNumberBetTotals[0]" :size="14" :max-chips="4" :show-label="false" />
+          </div>
         </button>
         <template v-for="row in 3">
           <button v-for="col in 12" :key="`${row}-${col}`"
@@ -345,9 +358,9 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
             :class="[colorClass((col - 1) * 3 + (4 - row)), selected.includes((col - 1) * 3 + (4 - row)) ? 'ring-2 ring-amber-400' : '', state.phase === 'result' && state.result === (col - 1) * 3 + (4 - row) ? 'fx-glow-win' : '']"
             @click="toggleNumber((col - 1) * 3 + (4 - row))">
             {{ (col - 1) * 3 + (4 - row) }}
-            <span v-if="myNumberBetTotals[(col - 1) * 3 + (4 - row)]" class="bet-chip-badge"
-              :style="{ background: chipStyleFor(myNumberBetTotals[(col - 1) * 3 + (4 - row)]).base, color: chipStyleFor(myNumberBetTotals[(col - 1) * 3 + (4 - row)]).text }">
-              {{ formatChipLabel(myNumberBetTotals[(col - 1) * 3 + (4 - row)]) }}</span>
+            <div v-if="myNumberBetTotals[(col - 1) * 3 + (4 - row)]" class="bet-chip-stack-pos">
+              <ChipStack :amount="myNumberBetTotals[(col - 1) * 3 + (4 - row)]" :size="14" :max-chips="4" :show-label="false" />
+            </div>
           </button>
         </template>
       </div>
@@ -356,9 +369,7 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
           class="flex flex-col items-center gap-0.5 rounded bg-emerald-950 px-2 py-1.5 text-xs text-emerald-200 hover:bg-emerald-800 disabled:opacity-40"
           @click="placeBet({ type: b.type })">
           <span>{{ b.label }}</span>
-          <span v-if="myOutsideBetTotals[b.type]" class="flex items-center gap-0.5 text-[10px] text-amber-300">
-            <CasinoChip :value="myOutsideBetTotals[b.type]" :size="14" />{{ myOutsideBetTotals[b.type].toLocaleString() }}
-          </span>
+          <ChipStack v-if="myOutsideBetTotals[b.type]" :amount="myOutsideBetTotals[b.type]" :size="14" :max-chips="4" class="mt-0.5" />
         </button>
       </div>
     </section>
@@ -421,17 +432,13 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
   transition: none !important;
 }
 
-.bet-chip-badge {
+.bet-chip-stack-pos {
   position: absolute;
-  bottom: -3px;
-  right: -3px;
-  font-size: 8px;
-  font-weight: 900;
-  line-height: 1;
-  padding: 2px 3px;
-  border-radius: 999px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  bottom: -6px;
+  right: -6px;
+  z-index: 5;
+  pointer-events: none;
+  transform: scale(0.92);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -7,11 +7,12 @@ import PhaseTimer from '../components/PhaseTimer.vue'
 import TableChat from '../components/TableChat.vue'
 import TableHud from '../components/TableHud.vue'
 import ChipTray from '../components/ChipTray.vue'
-import CasinoChip from '../components/CasinoChip.vue'
+import ChipStack from '../components/ChipStack.vue'
 import WinCascade from '../components/WinCascade.vue'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
+import { chipStyleFor } from '../lib/chips'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,8 +23,7 @@ const game = useGameSocket('blackjack')
 const state = ref(null)
 const error = ref('')
 const sending = ref(false)
-const betAmount = ref(0)
-const betChips = ref([]) // 확정 전, 좌석에 쌓인 칩(액면가 배열) — 스택 시각화용
+const betAmount = ref(0) // 확정 전, 좌석에 쌓인 베팅액 — ChipStack이 액면 자동 병합해 시각화
 const chipValue = ref(100) // 활성 칩(현재 선택된 베팅 단위)
 const floating = ref(null)
 const cascade = ref(null)
@@ -348,25 +348,23 @@ function addChip(v) {
   if (next < minBet) next = minBet
   if (next === prev) return // 이미 최대 베팅액
   sfx.chip()
+  // 이번 칩 추가로 누적 베팅액이 상위 액면으로 자동 병합되는 경계를 넘으면 겹클링을 더한다.
+  if (chipStyleFor(prev) !== chipStyleFor(next)) sfx.chipStack()
   betAmount.value = next
-  betChips.value = [...betChips.value, v]
 }
 function clearBet() {
   betAmount.value = 0
-  betChips.value = []
 }
 async function confirmBet() {
   const res = await act('bet:place', { amount: betAmount.value })
   if (res.ok) {
     betAmount.value = 0
-    betChips.value = []
   }
 }
 async function repeatLastBet() {
   if (!canRepeatLastBet.value || sending.value) return
   const { minBet, maxBet } = state.value.rules
   betAmount.value = Math.min(maxBet, Math.max(minBet, lastRoundBet.value))
-  betChips.value = [betAmount.value]
   await confirmBet()
 }
 function doAction(move) {
@@ -429,8 +427,10 @@ function doAction(move) {
             <template v-if="seat">
               <p class="truncate text-xs font-bold" :class="seat.userId === auth.user?.id ? 'text-amber-300' : 'text-emerald-200'">
                 {{ seat.nickname }}</p>
-              <p v-if="seat.bet" class="flex items-center justify-center gap-1 text-xs text-emerald-400">
-                <CasinoChip :value="seat.bet" :size="16" />{{ seat.bet.toLocaleString() }}칩</p>
+              <div v-if="seat.bet" class="flex flex-col items-center gap-0.5">
+                <ChipStack :amount="seat.bet" :size="16" :max-chips="4" :show-label="false" />
+                <span class="text-xs text-emerald-400">{{ seat.bet.toLocaleString() }}칩</span>
+              </div>
               <div v-for="(hand, hi) in seat.hands" :key="hi" class="mt-1"
                 :class="seat.activeHand === hi && state.currentSeat === i ? 'ring-1 ring-amber-400 rounded' : ''">
                 <div class="flex flex-wrap justify-center gap-0.5">
@@ -461,10 +461,8 @@ function doAction(move) {
         <button type="button" :disabled="sending"
           class="bet-spot flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-amber-500/50 text-center hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
           title="눌러서 활성 칩을 베팅에 추가" @click="addChip(chipValue)">
-          <span v-if="betChips.length === 0" class="px-1 text-[10px] leading-tight text-emerald-400">눌러서<br>베팅</span>
-          <div v-else class="chip-stack">
-            <CasinoChip v-for="(v, i) in betChips.slice(-6)" :key="i" :value="v" :size="26" class="chip-stack-item" />
-          </div>
+          <span v-if="betAmount === 0" class="px-1 text-[10px] leading-tight text-emerald-400">눌러서<br>베팅</span>
+          <ChipStack v-else :amount="betAmount" :size="26" :max-chips="6" :show-label="false" />
         </button>
         <div class="flex flex-wrap items-center justify-center gap-2">
           <span class="font-bold tabular-nums text-amber-300">{{ betAmount.toLocaleString() }}칩</span>
@@ -504,18 +502,6 @@ function doAction(move) {
 </template>
 
 <style scoped>
-.chip-stack {
-  display: flex;
-  flex-direction: column-reverse;
-  align-items: center;
-}
-.chip-stack-item {
-  margin-top: -18px;
-}
-.chip-stack-item:last-child {
-  margin-top: 0;
-}
-
 /* 펠트 테이블 배경 — 이미지 없이 그라디언트로 카지노 그린 펠트 질감을 낸다 */
 .felt-table {
   background: radial-gradient(ellipse at 50% -8%, #0d5c3f 0%, #07422c 55%, #04241a 100%);

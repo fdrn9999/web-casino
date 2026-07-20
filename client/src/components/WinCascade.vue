@@ -12,7 +12,7 @@ let clearTimer = null
 /** 승리 시 테이블에서 헤더의 잔액 표시 쪽으로 칩이 촤라락 날아가는 연출. */
 function burst({ count = 16 } = {}) {
   if (reduced) return
-  sfx.cascade()
+  sfx.chipWin()
   const batch = Array.from({ length: count }, () => {
     const angle = Math.random() * Math.PI * 2
     const dist = 110 + Math.random() * 260

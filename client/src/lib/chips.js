@@ -31,3 +31,22 @@ export function formatChipLabel(value) {
   }
   return String(value)
 }
+
+/** 임의의 누적 금액을 표준 액면가(CHIP_VALUES)로 그리디하게 분해해 "실제 칩 더미"처럼 보이게 한다.
+ * 큰 액면부터 채우므로 예: 500 -> [500](100짜리 5개가 아님), 1600 -> [1000, 500, 100], 700 -> [500, 100, 100].
+ * 반환 배열은 큰 액면이 앞(0번 인덱스)에 오며, ChipStack에서는 이를 "더미의 맨 아래"로 그린다.
+ * maxChips를 넘는 칩 개수는 시각적으로만 잘라낸다 — 실제 표시 금액(총액)은 항상 호출부에서 별도로 보여준다. */
+export function chipBreakdown(amount, { maxChips = 6 } = {}) {
+  if (!Number.isFinite(amount) || amount <= 0) return []
+  let remaining = Math.floor(amount)
+  const result = []
+  const descending = [...CHIP_VALUES].sort((a, b) => b - a)
+  for (const v of descending) {
+    while (remaining >= v) {
+      result.push(v)
+      remaining -= v
+    }
+  }
+  if (result.length > maxChips) return result.slice(0, maxChips)
+  return result
+}

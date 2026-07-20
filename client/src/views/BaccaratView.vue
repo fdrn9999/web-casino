@@ -7,11 +7,12 @@ import PhaseTimer from '../components/PhaseTimer.vue'
 import TableChat from '../components/TableChat.vue'
 import TableHud from '../components/TableHud.vue'
 import ChipTray from '../components/ChipTray.vue'
-import CasinoChip from '../components/CasinoChip.vue'
+import ChipStack from '../components/ChipStack.vue'
 import WinCascade from '../components/WinCascade.vue'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
+import { chipStyleFor } from '../lib/chips'
 
 const route = useRoute()
 const router = useRouter()
@@ -110,7 +111,9 @@ async function bet(kind, amountOverride) {
   sending.value = true
   error.value = ''
   const amt = amountOverride ?? chipValue.value
+  const prevTotal = myBetByKind.value[kind] ?? 0
   sfx.chip()
+  if (chipStyleFor(prevTotal) !== chipStyleFor(prevTotal + amt)) sfx.chipStack()
   try {
     const res = await game.emitAck('bet:place', { kind, amount: amt })
     if (res.error) {
@@ -188,9 +191,7 @@ async function repeatLastBet() {
           @click="bet(b.kind)">
           <span class="block text-xs font-bold sm:text-sm">{{ b.label }}</span>
           <span class="block text-[10px] opacity-80">{{ b.pay }}</span>
-          <span v-if="myBetByKind[b.kind]" class="mt-1 flex items-center justify-center gap-0.5 text-[10px] font-bold text-amber-300">
-            <CasinoChip :value="myBetByKind[b.kind]" :size="16" />{{ myBetByKind[b.kind].toLocaleString() }}
-          </span>
+          <ChipStack v-if="myBetByKind[b.kind]" :amount="myBetByKind[b.kind]" :size="16" :max-chips="4" class="mt-1 mx-auto" />
         </button>
       </div>
       <div class="mt-3 flex flex-wrap items-end gap-3">
