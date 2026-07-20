@@ -22,6 +22,7 @@ const selected = ref([])
 
 const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36])
 const colorClass = (n) => (n === 0 ? 'bg-emerald-600' : RED.has(n) ? 'bg-red-700' : 'bg-neutral-900')
+const pocketHex = (n) => (n === 0 ? '#059669' : RED.has(n) ? '#b91c1c' : '#171717')
 const OUTSIDE_BUTTONS = [
   { type: 'red', label: '레드' }, { type: 'black', label: '블랙' },
   { type: 'odd', label: '홀' }, { type: 'even', label: '짝' },
@@ -45,6 +46,18 @@ const wheelDeg = ref(0)
 const wheelSpinning = ref(false)
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
+// 포켓(칸) 색상 링 배경 - conic-gradient. i번째 포켓 중심이 (i*SEG)도(위쪽 기준 시계방향)에 오도록
+// -SEG/2 만큼 시작점을 당겨서, 각 포켓이 자기 중심을 기준으로 SEG폭을 갖게 만든다.
+const pocketGradient = computed(() => {
+  const stops = WHEEL_ORDER.map((n, i) => `${pocketHex(n)} ${(i * SEG).toFixed(3)}deg ${((i + 1) * SEG).toFixed(3)}deg`)
+  return `conic-gradient(from ${(-SEG / 2).toFixed(3)}deg, ${stops.join(', ')})`
+})
+// 포켓 사이 구분선(살짝 어두운 선)
+const pocketDividers = computed(() => {
+  const gap = 0.55
+  return `repeating-conic-gradient(from ${(-SEG / 2).toFixed(3)}deg, transparent 0deg ${(SEG - gap).toFixed(3)}deg, rgba(0,0,0,0.55) ${(SEG - gap).toFixed(3)}deg ${SEG.toFixed(3)}deg)`
+})
+
 function spinWheelTo(resultNumber, durationMs) {
   const idx = WHEEL_ORDER.indexOf(resultNumber)
   // 포인터(12시)에 결과 세그먼트가 오도록 하는 절대 각도(mod 360)
@@ -60,6 +73,66 @@ function spinWheelTo(resultNumber, durationMs) {
   setTimeout(() => (wheelSpinning.value = false), durationMs)
 }
 
+// --- 굴러가는 공(볼) 연출 ---
+// 휠은 시계방향(양수)으로 회전해 결과 번호를 12시 포인터에 맞춘다.
+// 공은 반시계방향(음수)으로 더 많이/빠르게 돌다가, 바깥 트랙 → 포켓 반경으로 "떨어지며" 감속해
+// 항상 12시(포인터) 위치, 즉 -90deg(mod 360 = 270)에 정착한다.
+// 휠도 결과를 항상 12시에 맞추므로, 공과 결과 번호는 매 라운드 정확히 일치한다.
+const BALL_TOP_MOD = 270 // -90deg를 양수로 표현한 값
+const ballDeg = ref(0)
+const ballSpinning = ref(false)
+const ballDropped = ref(false)
+const ballSnap = ref(false)
+const ballDropDurationMs = ref(900)
+const spinTimers = []
+
+function clearSpinTimers() {
+  spinTimers.splice(0).forEach((id) => clearTimeout(id))
+}
+
+function scheduleTicks(startDelay, windowMs) {
+  const count = 8
+  for (let i = 1; i <= count; i++) {
+    // 뒤로 갈수록 틱 간격이 벌어지도록 해 감속하는 느낌을 준다
+    const frac = (i / count) ** 1.6
+    spinTimers.push(setTimeout(() => sfx.spinTick(), startDelay + frac * windowMs))
+  }
+}
+
+function spinBallTo(durationMs) {
+  const current = ballDeg.value
+  const currentMod = ((current % 360) + 360) % 360
+  const diff = ((currentMod - BALL_TOP_MOD) % 360 + 360) % 360
+  const turns = 360 * 9
+  const target = current - diff - turns // 반시계방향(음수)으로 여러 바퀴 돈 뒤 12시에 정착
+
+  ballSpinning.value = true
+  // 이전 라운드에 안쪽(포켓)에 놓여 있던 공을 애니메이션 없이 즉시 바깥 트랙으로 되돌린다
+  ballSnap.value = true
+  ballDropped.value = false
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      ballSnap.value = false
+    })
+  })
+  ballDeg.value = target
+
+  const dropDelay = durationMs * 0.62
+  const dropWindow = Math.max(durationMs - dropDelay, 300)
+  ballDropDurationMs.value = dropWindow
+
+  spinTimers.push(setTimeout(() => {
+    ballDropped.value = true // 바깥 트랙 -> 포켓 반경으로 "낙하" + 바운스
+  }, dropDelay))
+
+  scheduleTicks(dropDelay, dropWindow)
+
+  spinTimers.push(setTimeout(() => {
+    ballSpinning.value = false
+    sfx.spinTick() // 정착음
+  }, durationMs))
+}
+
 onMounted(async () => {
   try {
     state.value = await game.connect(route.params.tableId)
@@ -68,7 +141,9 @@ onMounted(async () => {
   }
   game.onState((s) => {
     if (s.phase === 'spinning' && state.value?.phase !== 'spinning') {
-      spinWheelTo(s.result, (s.rules.spinSeconds - 0.5) * 1000)
+      const durationMs = (s.rules.spinSeconds - 0.5) * 1000
+      spinWheelTo(s.result, durationMs)
+      spinBallTo(durationMs)
     }
     if (s.phase === 'result' && state.value?.phase !== 'result') {
       if (myBets.value.length > 0) {
@@ -81,6 +156,7 @@ onMounted(async () => {
   })
 })
 onUnmounted(() => {
+  clearSpinTimers()
   game.disconnect()
 })
 
@@ -131,22 +207,49 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
 
     <!-- 결과/휠 -->
     <section class="rounded-2xl border border-amber-500/20 bg-emerald-900/50 p-4 text-center">
-      <div class="relative mx-auto h-44 w-44 sm:h-52 sm:w-52">
-        <div class="absolute left-1/2 top-0 z-10 -translate-x-1/2 text-amber-400">▼</div>
-        <div class="h-full w-full rounded-full border-4 border-amber-500/60"
+      <div class="relative mx-auto wheel-disc">
+        <!-- 포인터 -->
+        <div class="pointer-arrow absolute left-1/2 top-0 z-30 -translate-x-1/2 -translate-y-1 text-xl text-amber-400 drop-shadow">▼</div>
+
+        <!-- 회전하는 포켓 링 + 번호 -->
+        <div class="absolute inset-0 rounded-full border-4 border-amber-500/70 shadow-[inset_0_0_18px_rgba(0,0,0,0.6)]"
           :style="{
+            backgroundImage: `${pocketDividers}, ${pocketGradient}`,
             transform: `rotate(${wheelDeg}deg)`,
-            transition: wheelSpinning && !reducedMotion ? `transform ${(state.rules.spinSeconds - 0.5)}s cubic-bezier(0.15, 0.6, 0.15, 1)` : 'none',
+            transitionProperty: 'transform',
+            transitionDuration: wheelSpinning && !reducedMotion ? `${(state.rules.spinSeconds - 0.5)}s` : '0ms',
+            transitionTimingFunction: 'cubic-bezier(0.15, 0.6, 0.15, 1)',
           }">
           <div v-for="(n, i) in WHEEL_ORDER" :key="n"
-            class="absolute left-1/2 top-1/2 origin-top-left text-[9px] font-bold sm:text-[10px]"
-            :style="{ transform: `rotate(${i * SEG - 90}deg) translateX(64px) rotate(90deg)` }"
-            :class="n === 0 ? 'text-emerald-400' : RED.has(n) ? 'text-red-400' : 'text-neutral-300'">
-            {{ n }}
+            class="absolute left-1/2 top-1/2 origin-top-left"
+            :style="{ transform: `rotate(${i * SEG - 90}deg) translateX(calc(var(--size) * 0.40)) rotate(90deg)` }">
+            <span class="pocket-num block text-[11px] font-black leading-none text-white sm:text-xs"
+              :class="state.phase === 'result' && n === state.result ? 'fx-glow-win rounded-full bg-amber-400/30 px-1' : ''">{{ n }}</span>
           </div>
         </div>
+
+        <!-- 굴러가는 공 -->
+        <div class="ball-rotor absolute inset-0"
+          :style="{
+            transform: `rotate(${ballDeg}deg)`,
+            transitionProperty: 'transform',
+            transitionDuration: ballSpinning && !reducedMotion ? `${(state.rules.spinSeconds - 0.5)}s` : '0ms',
+          }">
+          <div class="ball-dot absolute left-1/2 top-1/2 h-2.5 w-2.5 rounded-full bg-white"
+            :class="{ 'no-transition': ballSnap || reducedMotion }"
+            :style="{
+              transform: `translate(-50%, -50%) translateX(calc(var(--size) * ${ballDropped ? '0.40' : '0.47'}))`,
+              transitionDuration: `${ballDropDurationMs}ms`,
+            }">
+          </div>
+        </div>
+
+        <!-- 중앙 허브 -->
+        <div class="absolute left-1/2 top-1/2 z-10 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber-500/70 bg-emerald-950 sm:h-12 sm:w-12"></div>
+
+        <!-- 결과 배지 -->
         <div v-if="state.phase === 'result' && state.result !== null"
-          class="fx-pop absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full text-2xl font-black text-white"
+          class="fx-pop absolute inset-0 z-20 m-auto flex h-16 w-16 items-center justify-center rounded-full text-2xl font-black text-white ring-4 ring-amber-400/70"
           :class="colorClass(state.result)">{{ state.result }}</div>
       </div>
       <div v-if="!(state.phase === 'result' && state.result !== null)" class="mt-2 text-sm text-emerald-400">베팅 후 결과를 기다리세요</div>
@@ -203,3 +306,38 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
     <TableHud :balance="auth.user?.balance ?? 0" :my-bet="myBetTotal" :status-label="PHASE_LABELS[state.phase]" :limit-label="limitLabel" />
   </div>
 </template>
+
+<style scoped>
+.wheel-disc {
+  --size: 260px;
+  width: var(--size);
+  height: var(--size);
+}
+@media (min-width: 640px) {
+  .wheel-disc { --size: 300px; }
+}
+@media (min-width: 768px) {
+  .wheel-disc { --size: 340px; }
+}
+
+.pocket-num {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 3px rgba(0, 0, 0, 0.6);
+}
+
+.ball-dot {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7), 0 0 5px rgba(255, 255, 255, 0.85);
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.ball-dot.no-transition {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wheel-disc > div,
+  .ball-rotor,
+  .ball-dot {
+    transition: none !important;
+  }
+}
+</style>
