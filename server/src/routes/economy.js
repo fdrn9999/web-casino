@@ -49,6 +49,7 @@ export function economyRouter(db) {
       bankruptCount: row.bankrupt_count,
       amount: eco.reliefAmount,
       balance: row.balance,
+      threshold: eco.reliefThreshold,
     }
   }
 
