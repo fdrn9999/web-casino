@@ -228,7 +228,8 @@ export class BlackjackRunner {
       this.phase = 'dealer'
       this.dealerHidden = false
       this.broadcast()
-      return this.schedule(1500, () => this.settleRound())
+      // 클라이언트가 초기 딜(좌석별 카드 + 딜러 업카드/홀카드)을 한 장씩 순차 연출할 시간을 확보.
+      return this.schedule(1800, () => this.settleRound())
     }
     // 블랙잭인 플레이어는 자동 완료
     for (const seat of bettingSeats) {
@@ -349,7 +350,8 @@ export class BlackjackRunner {
       }
     }
     this.broadcast()
-    this.schedule(1500, () => this.settleRound())
+    // 클라이언트가 홀카드 플립 + 딜러 드로우를 한 장씩 서스펜스 있게 보여줄 시간을 확보.
+    this.schedule(3000, () => this.settleRound())
   }
 
   settleRound() {

@@ -48,6 +48,16 @@ export const sfx = {
     tone({ freq: 2400, duration: 0.05, type: 'triangle', volume: 0.08, when: 0.05 })
   },
   deal: () => noise({ duration: 0.08, volume: 0.12 }),
+  // 카드를 테이블에 "탁" 내려놓는 소리: 짧은 필터링된 노이즈(종이 슥) + 낮은 톤의 부드러운 툭(무게감).
+  cardDeal: () => {
+    noise({ duration: 0.045, volume: 0.09 })
+    tone({ freq: 110, duration: 0.06, type: 'sine', volume: 0.07, when: 0.012 })
+  },
+  // 딜러 홀카드를 펼쳐 뒤집는 소리: 빠른 스와이프(노이즈 스윕 느낌) + 살짝 올라가는 톤.
+  cardFlip: () => {
+    noise({ duration: 0.09, volume: 0.07 })
+    tone({ freq: 500, duration: 0.1, type: 'triangle', volume: 0.06, slideTo: 900 })
+  },
   spinStart: () => tone({ freq: 200, duration: 0.3, type: 'sawtooth', volume: 0.08, slideTo: 600 }),
   spinTick: () => tone({ freq: 900, duration: 0.03, type: 'square', volume: 0.05 }),
   win: () => {
