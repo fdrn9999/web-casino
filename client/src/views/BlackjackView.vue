@@ -13,6 +13,7 @@ import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
 import { chipStyleFor } from '../lib/chips'
+import { cardRankSuit } from '../lib/cardText'
 
 const route = useRoute()
 const router = useRouter()
@@ -251,6 +252,31 @@ function seatHandCaughtUp(seatIdx, handIdx) {
   return seatCards(seatIdx, handIdx).length === serverHand.cards.length
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// 카드 대각선 부채꼴 배치: 실제 블랙잭처럼 카드가 오른쪽 아래로 겹쳐 쌓이도록,
+// 각 카드에 인덱스 기반 겹침(가로: 음수 margin) + 대각(세로 translate) + 살짝 회전을 준다.
+// ─────────────────────────────────────────────────────────────────────────
+function fanCardStyle(i, n, overlapPx = 22, dy = 7, rotDeg = 5) {
+  const mid = (n - 1) / 2
+  return {
+    position: 'relative',
+    zIndex: i,
+    marginLeft: i === 0 ? '0px' : `-${overlapPx}px`,
+    transform: `translateY(${i * dy}px) rotate(${((i - mid) * rotDeg).toFixed(1)}deg)`,
+  }
+}
+function fanPadBottom(n, dy = 7) {
+  return n > 1 ? `${(n - 1) * dy + 8}px` : '2px'
+}
+// 카드 한 장의 텍스트 표기용 클래스(빨강 수트만 색을 다르게)
+function suitClass(code) {
+  return cardRankSuit(code).isRed ? 'text-red-400' : 'text-slate-100'
+}
+function cardText(code) {
+  const { rank, symbol, hidden } = cardRankSuit(code)
+  return hidden ? '🂠' : `${rank}${symbol}`
+}
+
 onMounted(async () => {
   try {
     state.value = await game.connect(route.params.tableId)
@@ -409,10 +435,18 @@ function doAction(move) {
         <p class="mb-2 text-[9px] tracking-wide text-emerald-400/60">딜러는 17에서 반드시 멈춘다</p>
 
         <p class="mb-1 text-xs text-emerald-300">딜러 <b v-if="dealerView.total" class="text-amber-300">{{ dealerView.total }}</b></p>
-        <div class="flex min-h-[64px] flex-wrap items-center justify-center gap-1.5 sm:min-h-[88px]">
-          <CardImg v-for="(card, i) in dealerView.cards" :key="i" :code="card.code" />
+        <div class="flex min-h-[64px] flex-nowrap items-center justify-center sm:min-h-[88px]"
+          :style="{ paddingBottom: fanPadBottom(dealerView.cards.length, 8) }">
+          <span v-for="(card, i) in dealerView.cards" :key="i" :style="fanCardStyle(i, dealerView.cards.length, 26, 8, 5)">
+            <CardImg :code="card.code" deal-animate class="!w-14 sm:!w-20" />
+          </span>
           <p v-if="dealerView.cards.length === 0" class="text-sm text-emerald-500">대기 중</p>
         </div>
+        <!-- 딜러 카드 텍스트 표기: 그래픽이 잘 안 보일 때를 대비한 보조 표기(같은 서버 데이터에서 파생) -->
+        <p v-if="dealerView.cards.length" class="mt-1 font-mono text-sm tracking-wide">
+          <span v-for="(card, i) in dealerView.cards" :key="'dt' + i" class="mr-1 font-bold" :class="suitClass(card.code)">{{ cardText(card.code) }}</span>
+          <span v-if="dealerView.total" class="ml-1 font-bold text-amber-300">= {{ dealerView.total }}</span>
+        </p>
       </section>
 
       <!-- 좌석 반원(아치) -->
@@ -433,9 +467,19 @@ function doAction(move) {
               </div>
               <div v-for="(hand, hi) in seat.hands" :key="hi" class="mt-1"
                 :class="seat.activeHand === hi && state.currentSeat === i ? 'ring-1 ring-amber-400 rounded' : ''">
-                <div class="flex flex-wrap justify-center gap-0.5">
-                  <CardImg v-for="(card, ci) in seatCards(i, hi)" :key="ci" :code="card.code" class="!w-8 sm:!w-10" />
+                <div class="flex flex-nowrap justify-center"
+                  :style="{ paddingBottom: fanPadBottom(seatCards(i, hi).length, seat.userId === auth.user?.id ? 8 : 5) }">
+                  <span v-for="(card, ci) in seatCards(i, hi)" :key="ci"
+                    :style="fanCardStyle(ci, seatCards(i, hi).length, seat.userId === auth.user?.id ? 20 : 14, seat.userId === auth.user?.id ? 8 : 5, 5)">
+                    <CardImg :code="card.code" deal-animate
+                      :class="seat.userId === auth.user?.id ? '!w-11 sm:!w-16' : '!w-8 sm:!w-10'" />
+                  </span>
                 </div>
+                <!-- 카드 텍스트 표기: 내 손패는 물론 모든 좌석에 함께 표기(그래픽이 안 보일 때 대비) -->
+                <p v-if="seatCards(i, hi).length" class="font-mono tracking-wide"
+                  :class="seat.userId === auth.user?.id ? 'text-sm' : 'text-xs'">
+                  <span v-for="(card, ci) in seatCards(i, hi)" :key="'st' + ci" class="mr-0.5 font-bold" :class="suitClass(card.code)">{{ cardText(card.code) }}</span>
+                </p>
                 <p v-if="seatHandCaughtUp(i, hi)" class="text-xs text-emerald-300">
                   {{ hand.total }}<span v-if="hand.soft"> (소프트)</span></p>
                 <p v-if="hand.result && seatHandCaughtUp(i, hi)" class="text-xs font-bold"
