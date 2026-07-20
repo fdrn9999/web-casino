@@ -11,11 +11,21 @@ const auth = useAuthStore()
 const { sfx, playJackpot } = useSound()
 
 const SYMS = ['🍒', '🍋', '🔔', '⭐', '7']
+
+// prefers-reduced-motion: collapse the drama to near-instant instead of
+// forcing long dramatic waits on players who've asked for less motion.
+const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+
 const SPIN_SPEED = 1600 // px/sec continuous scroll speed
-const MIN_SPIN_MS = 900 // minimum visual spin time before reels start stopping
-const STOP_STAGGER_MS = 180 // delay between each reel starting its stop
-const STOP_DURATION_MS = 550 // duration of each reel's stop/deceleration tween
-const AUTO_SPIN_DELAY = 700 // gap between auto-spins
+// Substantial build-up before the first reel stops, so there's real anticipation.
+const MIN_SPIN_MS = REDUCED_MOTION ? 150 : 1500
+// Clear left -> middle -> right gap so each reel lands as its own distinct "띡" moment.
+const STOP_STAGGER_MS = REDUCED_MOTION ? 80 : 750
+// Deceleration + settle-bounce duration for a single reel's stop tween.
+const STOP_DURATION_MS = REDUCED_MOTION ? 150 : 650
+// Extra suspense delay on the LAST reel when reels 0 & 1 already matched (potential 3-of-a-kind).
+const SUSPENSE_EXTRA_MS = REDUCED_MOTION ? 0 : 1000
+const AUTO_SPIN_DELAY = REDUCED_MOTION ? 400 : 850 // gap between auto-spins
 
 function randomSym() {
   return SYMS[Math.floor(Math.random() * SYMS.length)]
@@ -25,6 +35,16 @@ function buildStrip(n) {
 }
 function easeOutCubic(t) {
   return 1 - Math.pow(1 - t, 3)
+}
+// Slight overshoot-then-settle so a landed reel reads as a crisp "띡" click
+// into place rather than an abrupt stop. Skipped under reduced-motion.
+function easeOutBackSubtle(t) {
+  const c1 = 1.2
+  const c3 = c1 + 1
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2)
+}
+function landingEase(t) {
+  return REDUCED_MOTION ? easeOutCubic(t) : easeOutBackSubtle(t)
 }
 
 const state = ref(null)
@@ -42,6 +62,9 @@ let glowTimeout = null
 const reelStrips = ref([['❔'], ['❔'], ['❔']])
 const reelY = ref([0, 0, 0])
 const reelState = ref(['idle', 'idle', 'idle']) // idle | spinning | stopping | stopped
+// True while the last reel is being held back for "will it hit?" suspense
+// (reels 0 & 1 already matched). Drives a pulse/glow on the reel window.
+const suspense = ref(false)
 
 const reelWindowEls = [null, null, null] // plain DOM refs, imperative use only
 const itemHeights = [96, 96, 96]
@@ -105,7 +128,7 @@ function tickReels(ts) {
       if (tw) {
         anyActive = true
         const p = Math.min(1, (ts - tw.start) / tw.duration)
-        const eased = easeOutCubic(p)
+        const eased = landingEase(p)
         reelY.value[i] = tw.from + (tw.to - tw.from) * eased
         if (p >= 1) {
           tweens[i] = null
@@ -154,7 +177,10 @@ function stopReel(i, symbol) {
     const currentIndex = Math.abs(currentPos) / itemHeight
     const finalIndex = Math.ceil(currentIndex) + 4
     const strip = reelStrips.value[i]
-    while (strip.length <= finalIndex) strip.push(randomSym())
+    // Pad a few extra items past finalIndex: the settle-bounce easing can
+    // momentarily overshoot the landing position, and without this buffer
+    // that would scroll past the array into a blank frame for an instant.
+    while (strip.length <= finalIndex + 3) strip.push(randomSym())
     strip[finalIndex] = symbol
     stopTargets[i] = symbol
     reelResolvers[i] = resolve
@@ -167,13 +193,25 @@ function stopReel(i, symbol) {
 async function stopReelsSequentially(symbols) {
   const promises = []
   for (let i = 0; i < 3; i++) {
-    if (i > 0) await wait(STOP_STAGGER_MS)
+    if (i > 0) {
+      let gap = STOP_STAGGER_MS
+      // Reels 0 & 1 already landed on the same symbol — a potential 3-of-a-kind.
+      // Hold the last reel back a little longer for classic "will it hit?" tension.
+      const isSuspenseGap = i === 2 && !REDUCED_MOTION && symbols[0] === symbols[1]
+      if (isSuspenseGap) {
+        gap += SUSPENSE_EXTRA_MS
+        suspense.value = true
+      }
+      await wait(gap)
+      if (isSuspenseGap) suspense.value = false
+    }
     promises.push(stopReel(i, symbols[i]))
   }
   await Promise.all(promises)
 }
 
 function hardStopReels() {
+  suspense.value = false
   if (rafId != null) {
     cancelAnimationFrame(rafId)
     rafId = null
@@ -228,6 +266,7 @@ async function doSpin() {
   error.value = ''
   result.value = null
   glow.value = false
+  suspense.value = false
   clearTimeout(glowTimeout)
   spinning.value = true
   sfx.spinStart()
@@ -340,7 +379,10 @@ async function autoSpinLoop() {
         <FloatingText ref="floating" />
         <div v-for="(strip, i) in reelStrips" :key="i" :ref="(el) => setReelEl(el, i)"
           class="relative h-24 w-20 overflow-hidden rounded-xl bg-emerald-950 shadow-inner sm:h-28 sm:w-24"
-          :class="{ 'ring-2 ring-amber-400/70': reelState[i] === 'spinning' || reelState[i] === 'stopping' }">
+          :class="{
+            'ring-2 ring-amber-400/70': (reelState[i] === 'spinning' || reelState[i] === 'stopping') && !(suspense && i === 2),
+            'ring-4 ring-red-400/90 fx-pulse-gold': suspense && i === 2,
+          }">
           <div class="flex will-change-transform flex-col" :style="{ transform: `translateY(${reelY[i]}px)` }">
             <div v-for="(sym, j) in strip" :key="j"
               class="flex h-24 w-20 shrink-0 items-center justify-center text-5xl sm:h-28 sm:w-24">
