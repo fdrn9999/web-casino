@@ -30,11 +30,14 @@ export function adminTablesRouter(db, ctx) {
     res.status(201).json({ table })
   }))
 
-  r.put('/:id', (req, res) => handle(res, () => {
-    const table = updateTable(db, req.params.id, req.body ?? {})
-    broadcastTables(db, ctx.io)
-    res.json({ table })
-  }))
+  r.put('/:id', (req, res) => {
+    if (!getTable(db, req.params.id)) return res.status(404).json({ error: '테이블을 찾을 수 없습니다.' })
+    handle(res, () => {
+      const table = updateTable(db, req.params.id, req.body ?? {})
+      broadcastTables(db, ctx.io)
+      res.json({ table })
+    })
+  })
 
   r.post('/:id/close', (req, res) => {
     if (!getTable(db, req.params.id)) return res.status(404).json({ error: '테이블을 찾을 수 없습니다.' })

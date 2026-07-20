@@ -39,6 +39,7 @@ export function adminUsersRouter(db, ctx) {
     if (!user) return
     const { amount, reason } = req.body ?? {}
     if (!Number.isInteger(amount) || amount < 1) return res.status(400).json({ error: '지급액은 1 이상의 정수여야 합니다.' })
+    if (reason !== undefined && reason !== null && typeof reason !== 'string') return res.status(400).json({ error: '사유는 문자열이어야 합니다.' })
     if (!reason?.trim()) return res.status(400).json({ error: '사유를 입력해야 합니다.' })
     const { balanceAfter } = applyTransaction(db, {
       userId: user.id, type: 'admin_grant', amount, reason: reason.trim(),
@@ -50,9 +51,14 @@ export function adminUsersRouter(db, ctx) {
     const user = loadUser(req, res)
     if (!user) return
     const { amount, reason } = req.body ?? {}
+    if (reason !== undefined && reason !== null && typeof reason !== 'string') return res.status(400).json({ error: '사유는 문자열이어야 합니다.' })
     if (!reason?.trim()) return res.status(400).json({ error: '사유를 입력해야 합니다.' })
+    if (amount === 'all') {
+      if (user.balance === 0) return res.json({ balance: 0 })
+    } else if (!Number.isInteger(amount) || amount < 1) {
+      return res.status(400).json({ error: "몰수액은 1 이상의 정수 또는 'all'이어야 합니다." })
+    }
     const take = amount === 'all' ? user.balance : amount
-    if (!Number.isInteger(take) || take < 1) return res.status(400).json({ error: "몰수액은 1 이상의 정수 또는 'all'이어야 합니다." })
     const clamped = Math.min(take, user.balance)
     if (clamped === 0) return res.json({ balance: user.balance })
     const { balanceAfter } = applyTransaction(db, {
@@ -64,7 +70,9 @@ export function adminUsersRouter(db, ctx) {
   r.post('/:id/ban', (req, res) => {
     const user = loadUser(req, res)
     if (!user) return
-    const reason = (req.body?.reason ?? '').trim()
+    const rawReason = req.body?.reason
+    if (rawReason !== undefined && rawReason !== null && typeof rawReason !== 'string') return res.status(400).json({ error: '사유는 문자열이어야 합니다.' })
+    const reason = (rawReason ?? '').trim()
     if (!reason) return res.status(400).json({ error: '차단 사유를 입력해야 합니다.' })
     if (user.role === 'admin') return res.status(400).json({ error: '관리자 계정은 차단할 수 없습니다.' })
     db.prepare('UPDATE users SET banned = 1, ban_reason = ? WHERE id = ?').run(reason, user.id)

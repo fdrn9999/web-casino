@@ -42,6 +42,26 @@ describe('tables', () => {
     expect((await createTable({ game: 'blackjack', name: 'ok', limits: { minBet: 500, maxBet: 100 } })).status).toBe(400)
   })
 
+  it('이름이 문자열이 아니면 400', async () => {
+    const res = await createTable({ game: 'blackjack', name: 12345 })
+    expect(res.status).toBe(400)
+  })
+
+  it('존재하지 않는 테이블을 수정하면 404', async () => {
+    const res = await request(app).put('/api/admin/tables/999999')
+      .set('Authorization', `Bearer ${adminToken}`).send({ name: '새 이름' })
+    expect(res.status).toBe(404)
+    expect(res.body.error).toBe('테이블을 찾을 수 없습니다.')
+  })
+
+  it('존재하는 테이블을 수정하면 200', async () => {
+    const { body } = await createTable({ game: 'blackjack', name: '수정 전' })
+    const res = await request(app).put(`/api/admin/tables/${body.table.id}`)
+      .set('Authorization', `Bearer ${adminToken}`).send({ name: '수정 후' })
+    expect(res.status).toBe(200)
+    expect(res.body.table.name).toBe('수정 후')
+  })
+
   it('일반 유저는 생성 불가(403)', async () => {
     const res = await request(app).post('/api/admin/tables')
       .set('Authorization', `Bearer ${userToken}`).send({ game: 'blackjack', name: 'x' })

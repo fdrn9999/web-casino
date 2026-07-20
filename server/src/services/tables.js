@@ -17,6 +17,7 @@ function rowToTable(row) {
 
 function validate({ game, name, limits }) {
   if (!GAME_KEYS.includes(game)) throw new ValidationError('지원하지 않는 게임입니다.')
+  if (name !== undefined && name !== null && typeof name !== 'string') throw new ValidationError('테이블 이름은 문자열이어야 합니다.')
   if (!name?.trim() || name.trim().length > 20) throw new ValidationError('테이블 이름은 1~20자여야 합니다.')
   if (limits != null) {
     const { minBet, maxBet } = limits

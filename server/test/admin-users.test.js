@@ -56,6 +56,29 @@ describe('admin users', () => {
     expect(tx.reason).toBe('악용 적발')
   })
 
+  it("잔액 0인 유저에게 몰수 'all'을 실행하면 200 no-op", async () => {
+    await request(app).post(`/api/admin/users/${userId}/confiscate`)
+      .set('Authorization', `Bearer ${adminToken}`).send({ amount: 'all', reason: '1차 몰수' })
+    const res = await request(app).post(`/api/admin/users/${userId}/confiscate`)
+      .set('Authorization', `Bearer ${adminToken}`).send({ amount: 'all', reason: '2차 몰수' })
+    expect(res.status).toBe(200)
+    expect(res.body.balance).toBe(0)
+    const txCount = db.prepare("SELECT COUNT(*) as c FROM transactions WHERE type = 'admin_confiscate'").get().c
+    expect(txCount).toBe(1)
+  })
+
+  it('사유가 문자열이 아니면 400', async () => {
+    const grant = await request(app).post(`/api/admin/users/${userId}/grant`)
+      .set('Authorization', `Bearer ${adminToken}`).send({ amount: 500, reason: 123 })
+    expect(grant.status).toBe(400)
+    const confiscate = await request(app).post(`/api/admin/users/${userId}/confiscate`)
+      .set('Authorization', `Bearer ${adminToken}`).send({ amount: 100, reason: ['악용'] })
+    expect(confiscate.status).toBe(400)
+    const ban = await request(app).post(`/api/admin/users/${userId}/ban`)
+      .set('Authorization', `Bearer ${adminToken}`).send({ reason: { x: 1 } })
+    expect(ban.status).toBe(400)
+  })
+
   it('차단 시 강제 종료 이벤트가 나가고 로그인이 거부된다', async () => {
     const res = await request(app).post(`/api/admin/users/${userId}/ban`)
       .set('Authorization', `Bearer ${adminToken}`).send({ reason: '욕설' })
