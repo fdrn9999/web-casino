@@ -12,6 +12,7 @@ import { adminTablesRouter } from './routes/admin-tables.js'
 import { adminSettingsRouter } from './routes/admin-settings.js'
 import { adminStatsRouter } from './routes/admin-stats.js'
 import { meStatsRouter } from './routes/me-stats.js'
+import { meRouter } from './routes/me.js'
 import { attendanceRouter } from './routes/attendance.js'
 import { leaderboardRouter } from './routes/leaderboard.js'
 import { requireAuth } from './middleware/auth.js'
@@ -24,6 +25,7 @@ export function createApp(db, ctx = {}) {
   app.use('/api/auth', authRouter(db))
   app.use('/api/me/stats', meStatsRouter(db))
   app.get('/api/me', requireAuth(db), (req, res) => res.json({ user: req.user }))
+  app.use('/api/me', meRouter(db))
   app.use('/api/admin/users', adminUsersRouter(db, ctx))
   app.use('/api/notices', noticesRouter(db))
   app.use('/api/admin/notices', adminNoticesRouter(db, ctx))
