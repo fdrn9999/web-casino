@@ -1,5 +1,6 @@
 import path from 'node:path'
 import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import express from 'express'
 import { authRouter } from './routes/auth.js'
 import { economyRouter } from './routes/economy.js'
@@ -37,7 +38,8 @@ export function createApp(db, ctx = {}) {
 
   app.use('/api', (req, res) => res.status(404).json({ error: '존재하지 않는 API입니다.' }))
 
-  const dist = path.resolve('../client/dist')
+  // 모듈 위치(server/src) 기준으로 해석해 실행 cwd와 무관하게 client/dist를 찾는다.
+  const dist = fileURLToPath(new URL('../../client/dist', import.meta.url))
   if (fs.existsSync(dist)) {
     app.use(express.static(dist))
     app.use((req, res, next) => {
