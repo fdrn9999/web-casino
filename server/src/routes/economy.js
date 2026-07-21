@@ -4,22 +4,50 @@ import { getSettings } from '../services/settings.js'
 import { requireAuth } from '../middleware/auth.js'
 import { kstDateString } from '../lib/time.js'
 
+class AlreadyClaimedError extends Error {}
+class NotEligibleError extends Error {
+  constructor(message, code) {
+    super(message)
+    this.code = code
+  }
+}
+
+function isUniqueConstraintError(e) {
+  return typeof e.code === 'string' && e.code.startsWith('SQLITE_CONSTRAINT')
+}
+
 export function economyRouter(db) {
   const r = Router()
   r.use(requireAuth(db))
 
   r.post('/bonus/daily', (req, res) => {
     const today = kstDateString()
-    const row = db.prepare('SELECT last_daily_bonus_at FROM users WHERE id = ?').get(req.user.id)
-    if (row.last_daily_bonus_at === today) {
-      return res.status(409).json({ error: '오늘은 이미 출석 보너스를 받았습니다.' })
+    try {
+      const result = db.transaction(() => {
+        const row = db.prepare('SELECT last_daily_bonus_at FROM users WHERE id = ?').get(req.user.id)
+        if (row.last_daily_bonus_at === today) {
+          throw new AlreadyClaimedError('오늘은 이미 출석 보너스를 받았습니다.')
+        }
+        // 날짜 기준 UNIQUE 제약으로 당일 중복 지급을 DB 레벨에서 원자적으로 차단.
+        try {
+          db.prepare('INSERT INTO daily_claims (user_id, claim_type, claim_date) VALUES (?, ?, ?)')
+            .run(req.user.id, 'daily_bonus', today)
+        } catch (e) {
+          if (isUniqueConstraintError(e)) throw new AlreadyClaimedError('오늘은 이미 출석 보너스를 받았습니다.')
+          throw e
+        }
+        const { dailyBonus } = getSettings(db, 'economy')
+        db.prepare('UPDATE users SET last_daily_bonus_at = ? WHERE id = ?').run(today, req.user.id)
+        const { balanceAfter } = applyTransaction(db, {
+          userId: req.user.id, type: 'daily_bonus', amount: dailyBonus, reason: `출석 보너스 ${today}`,
+        })
+        return { balance: balanceAfter, amount: dailyBonus }
+      })()
+      res.json(result)
+    } catch (e) {
+      if (e instanceof AlreadyClaimedError) return res.status(409).json({ error: e.message })
+      throw e
     }
-    const { dailyBonus } = getSettings(db, 'economy')
-    db.prepare('UPDATE users SET last_daily_bonus_at = ? WHERE id = ?').run(today, req.user.id)
-    const { balanceAfter } = applyTransaction(db, {
-      userId: req.user.id, type: 'daily_bonus', amount: dailyBonus, reason: `출석 보너스 ${today}`,
-    })
-    res.json({ balance: balanceAfter, amount: dailyBonus })
   })
 
   function reliefStatus(db, user) {
@@ -56,16 +84,25 @@ export function economyRouter(db) {
   r.get('/relief/status', (req, res) => res.json(reliefStatus(db, req.user)))
 
   r.post('/relief', (req, res) => {
-    const st = reliefStatus(db, req.user)
-    if (!st.eligible) {
-      return res.status(st.code).json({ error: st.reasonIfNot })
+    try {
+      const result = db.transaction(() => {
+        // 트랜잭션 내부에서 자격을 재확인해 체크-후-쓰기 사이의 경합을 방어한다.
+        const st = reliefStatus(db, req.user)
+        if (!st.eligible) {
+          throw new NotEligibleError(st.reasonIfNot, st.code)
+        }
+        db.prepare("UPDATE users SET last_relief_at = datetime('now'), bankrupt_count = bankrupt_count + 1 WHERE id = ?")
+          .run(req.user.id)
+        const { balanceAfter } = applyTransaction(db, {
+          userId: req.user.id, type: 'bankrupt_relief', amount: st.amount, reason: '파산 구제',
+        })
+        return { balance: balanceAfter, amount: st.amount, bankruptCount: st.bankruptCount + 1 }
+      })()
+      res.json(result)
+    } catch (e) {
+      if (e instanceof NotEligibleError) return res.status(e.code).json({ error: e.message })
+      throw e
     }
-    db.prepare("UPDATE users SET last_relief_at = datetime('now'), bankrupt_count = bankrupt_count + 1 WHERE id = ?")
-      .run(req.user.id)
-    const { balanceAfter } = applyTransaction(db, {
-      userId: req.user.id, type: 'bankrupt_relief', amount: st.amount, reason: '파산 구제',
-    })
-    res.json({ balance: balanceAfter, amount: st.amount, bankruptCount: st.bankruptCount + 1 })
   })
 
   return r

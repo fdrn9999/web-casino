@@ -81,6 +81,13 @@ CREATE TABLE IF NOT EXISTS jackpot (
   last_won_amount INTEGER,
   last_won_at TEXT
 );
+CREATE TABLE IF NOT EXISTS daily_claims (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  claim_type TEXT NOT NULL,
+  claim_date TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, claim_type, claim_date)
+);
 `
 
 export function migrate(db) {

@@ -25,6 +25,28 @@ describe('economy', () => {
     expect(dup.status).toBe(409)
   })
 
+  it('BUG-12: 두 번째 요청 후에도 잔액이 불변이며 daily_claims에 한 행만 남는다', async () => {
+    const ok = await request(app).post('/api/bonus/daily').set('Authorization', `Bearer ${token}`)
+    const dup = await request(app).post('/api/bonus/daily').set('Authorization', `Bearer ${token}`)
+    expect(dup.status).toBe(409)
+
+    const userRow = db.prepare('SELECT balance FROM users WHERE id = ?').get(id)
+    expect(userRow.balance).toBe(ok.body.balance)
+
+    const claimRows = db.prepare("SELECT COUNT(*) c FROM daily_claims WHERE user_id = ? AND claim_type = 'daily_bonus'").get(id)
+    expect(claimRows.c).toBe(1)
+  })
+
+  it('BUG-12: daily_claims에 오늘자 행이 이미 있으면 컬럼 값과 무관하게 UNIQUE로 거부된다', async () => {
+    const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
+    db.prepare('INSERT INTO daily_claims (user_id, claim_type, claim_date) VALUES (?, ?, ?)').run(id, 'daily_bonus', today)
+
+    const res = await request(app).post('/api/bonus/daily').set('Authorization', `Bearer ${token}`)
+    expect(res.status).toBe(409)
+    const userRow = db.prepare('SELECT balance FROM users WHERE id = ?').get(id)
+    expect(userRow.balance).toBe(10000)
+  })
+
   it('잔액이 기준 이상이면 구제 불가(400)', async () => {
     const res = await request(app).post('/api/relief').set('Authorization', `Bearer ${token}`)
     expect(res.status).toBe(400)
