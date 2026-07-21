@@ -62,6 +62,51 @@ describe('tables', () => {
     expect(res.body.table.name).toBe('수정 후')
   })
 
+  it('부분 규칙 오버라이드(게임별 방 규칙)를 허용하고 저장된다', async () => {
+    const res = await createTable({
+      game: 'blackjack',
+      name: '규칙 오버라이드',
+      limits: { decks: 2, hitSoft17: true, maxBet: 50000 },
+    })
+    expect(res.status).toBe(201)
+    expect(res.body.table.limits).toEqual({ decks: 2, hitSoft17: true, maxBet: 50000 })
+
+    const rouletteRes = await createTable({ game: 'roulette', name: '룰렛 오버라이드', limits: { spinSeconds: 10 } })
+    expect(rouletteRes.status).toBe(201)
+    expect(rouletteRes.body.table.limits).toEqual({ spinSeconds: 10 })
+
+    const baccaratRes = await createTable({ game: 'baccarat', name: '바카라 오버라이드', limits: { tiePayout: 9, pairPayout: 12 } })
+    expect(baccaratRes.status).toBe(201)
+    expect(baccaratRes.body.table.limits).toEqual({ tiePayout: 9, pairPayout: 12 })
+  })
+
+  it('규칙 오버라이드에 알 수 없는 키가 있으면 400', async () => {
+    const res = await createTable({ game: 'blackjack', name: '알수없는키', limits: { foo: 1 } })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/알 수 없는 규칙 키/)
+  })
+
+  it('규칙 오버라이드 값이 범위를 벗어나거나 타입이 틀리면 400', async () => {
+    expect((await createTable({ game: 'blackjack', name: 'a', limits: { decks: 9 } })).status).toBe(400)
+    expect((await createTable({ game: 'blackjack', name: 'b', limits: { decks: 0 } })).status).toBe(400)
+    expect((await createTable({ game: 'blackjack', name: 'c', limits: { decks: 2.5 } })).status).toBe(400)
+    expect((await createTable({ game: 'blackjack', name: 'd', limits: { hitSoft17: 'yes' } })).status).toBe(400)
+    expect((await createTable({ game: 'blackjack', name: 'e', limits: { blackjackPayout: 3 } })).status).toBe(400)
+    expect((await createTable({ game: 'roulette', name: 'f', limits: { spinSeconds: 1 } })).status).toBe(400)
+    expect((await createTable({ game: 'baccarat', name: 'g', limits: { tiePayout: -1 } })).status).toBe(400)
+  })
+
+  it('부분 오버라이드가 한쪽 베팅 한도만 지정해도 기본값과 병합된 유효 최소<최대를 강제한다', async () => {
+    // 기본 블랙잭 minBet=100. maxBet만 90으로 지정하면 유효 최소(100) >= 유효 최대(90) → 400
+    const bad = await createTable({ game: 'blackjack', name: '유효한도위반', limits: { maxBet: 90 } })
+    expect(bad.status).toBe(400)
+
+    // 기본 블랙잭 maxBet=10000. minBet만 5000으로 지정하면 유효 5000 < 10000 → 통과
+    const ok = await createTable({ game: 'blackjack', name: '유효한도통과', limits: { minBet: 5000 } })
+    expect(ok.status).toBe(201)
+    expect(ok.body.table.limits).toEqual({ minBet: 5000 })
+  })
+
   it('일반 유저는 생성 불가(403)', async () => {
     const res = await request(app).post('/api/admin/tables')
       .set('Authorization', `Bearer ${userToken}`).send({ game: 'blackjack', name: 'x' })
