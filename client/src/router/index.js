@@ -10,6 +10,7 @@ const routes = [
   { path: '/roulette/:tableId', component: () => import('../views/RouletteView.vue'), meta: { requiresAuth: true } },
   { path: '/baccarat/:tableId', component: () => import('../views/BaccaratView.vue'), meta: { requiresAuth: true } },
   { path: '/me', component: () => import('../views/MyPageView.vue'), meta: { requiresAuth: true } },
+  { path: '/pixi-demo', component: () => import('../views/PixiDemoView.vue'), meta: { requiresAuth: true } },
   { path: '/leaderboard', component: () => import('../views/LeaderboardView.vue'), meta: { requiresAuth: true } },
   {
     path: '/admin',
