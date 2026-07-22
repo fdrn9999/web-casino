@@ -58,11 +58,12 @@ npm start            # http://localhost:4000 (Express가 정적 파일까지 서
 | 영역 | 사용 기술 |
 |---|---|
 | 프론트엔드 | Vue 3 (Composition API) · Vite · Tailwind CSS v4 · Pinia · Vue Router · Chart.js |
+| 게임 렌더링 | DOM/CSS(기본) + **PixiJS 8(WebGL) 그래픽 모드** — 게임 화면의 "✨ 그래픽 화면(베타)" 토글로 전환, 그래픽 모드 사용자만 pixi 번들 로드 |
 | 실시간 | Socket.IO (client) |
 | 백엔드 | Node.js · Express 5 · Socket.IO · better-sqlite3 |
 | 인증 | 아이디/비밀번호(bcrypt) + JWT |
 | 통신 | REST는 Fetch API(`client/src/lib/api.js` 단일 래퍼), 실시간은 WebSocket(Socket.IO) |
-| 테스트 | Vitest + Supertest (서버 129개) |
+| 테스트 | Vitest + Supertest (서버 172개) |
 
 ---
 
@@ -104,9 +105,12 @@ npm start            # http://localhost:4000 (Express가 정적 파일까지 서
 ### 4. 게임 4종
 
 #### 🃏 블랙잭 (실시간 멀티플레이어, 7석)
-- 원하는 좌석에 앉아 참가. 베팅 타이머 → 딜링 → **좌석 순서대로 개인 턴**(턴 타이머, 만료 시 자동 스탠드) → 딜러 → 정산.
-- 액션: 히트 / 스탠드 / 더블 / 스플릿(같은 랭크) / 서렌더(설정 시).
-- 딜러 홀카드는 뒤집혀 있다가 딜러 차례에 **플립 애니메이션**으로 공개. 승리 좌석 글로우, 결과 오버레이(블랙잭!/승리/무승부/패배/버스트/서렌더).
+- 원하는 좌석에 앉아 참가. **즉시 누적 베팅**: 칩을 얹을 때마다 서버에 바로 반영되고(확정 버튼 없음),
+  베팅 시간이 끝나면 올려둔 칩으로 자동 시작. 칩을 올린 뒤엔 라운드 종료까지 자리를 뜰 수 없고,
+  **베팅 창 전체를 보내고도 베팅하지 않은 좌석은 자동으로 비워집니다**(창 중간 착석자는 다음 창까지 유예).
+- 액션: 히트 / 스탠드 / 더블 / 스플릿(같은 랭크) / 서렌더(설정 시). 턴 타이머 만료 시 자동 스탠드.
+- 딜러 카드는 **겹침 없이 나란히**, 플레이어 핸드는 옆으로 겹쳐 쌓임. 라운드 사이엔 **슈에서 직접
+  리플 셔플**하고, 쓴 카드는 슈로 회수. 홀카드는 플립 애니메이션으로 공개, 승리 좌석 글로우.
 
 #### 🎡 룰렛 (실시간 멀티플레이어)
 - 유러피언(0 하나). 번호판에서 **인사이드 베팅**(번호 1·2·3·4·6개 선택) + **아웃사이드 베팅**(레드/블랙·홀/짝·하이/로우·더즌·칼럼).
@@ -114,16 +118,26 @@ npm start            # http://localhost:4000 (Express가 정적 파일까지 서
 
 #### 🀄 바카라 (실시간 멀티플레이어)
 - 플레이어(1:1) / 뱅커(0.95:1) / 타이(8:1) / P·B 페어(11:1) 베팅. 표준 드로잉 룰 자동 진행.
-- 카드 공개 연출, 승리 사이드 글로우, 결과 배너, 최근 결과 구슬(P=파랑·B=빨강·T=초록).
+- 실제 카지노 순서(P1-B1-P2-B2-P3-B3)로 **한 장씩 슈에서 날아와 뒤집히는** 공개 연출, 승리 사이드 글로우.
+- **중국점 상시 표시**: 원매(구슬) + 빅로드 + 파생 로드 3종(빅아이보이/소로/커크로치, 표준 규칙).
 
 #### 🎰 슬롯머신 (싱글 + 전역 프로그레시브 잭팟)
 - 3릴, **세로 스크롤로 돌아가는 릴**이 왼쪽부터 순차 정지. **오토 스핀** 토글 지원(잔액 부족/잭팟 시 자동 정지).
-- 스핀 베팅액의 일정 비율이 **전역 잭팟 풀**에 적립되고 모든 접속자에게 실시간 표시.
+- 슬롯 화면에도 **실시간 잭팟 위젯** 표시. 스핀 베팅액의 일정 비율이 **전역 잭팟 풀**에 적립.
+- 사소한 당첨도 **빠칭코풍 연출**(회전 광선 + 콘페티 + 금액 팝 + 화려한 팡파레)로 축하.
 - 7-7-7이면 풀 전액 당첨 → **풀스크린 잭팟 연출**(컨페티 + 금액 카운트업 + 화면 흔들림 + 잭팟 사운드) + 전체 유저에게 축하 배너 브로드캐스트.
 
 ### 5. 라이브 테이블 공통 UX
-- 하단 **HUD 바**: 잔고 / 이번 라운드 베팅액 / 라운드 상태 / 베팅 한도·배당 표기.
-- 베팅 카운트다운 타이머(3초 이하 경고음), 칩 선택 UI.
+- **통일된 베팅 편의**: ⬆최대(테이블 한도·잔고로 자동 클램프되는 올인) / ⌫되돌리기(마지막 1건 즉시 환불) /
+  ✕전체 취소(총액 환불) / ↺직전 베팅 — 세 게임 모두 같은 버튼·같은 동작. 큰 칩을 눌러도 한도까지만 자동 베팅.
+- **마감 직전 보호**: 마감 0.8초 전부터는 베팅을 막고 다음 라운드를 안내(도착 시점 레이스 예방).
+- 우하단 **플로팅 HUD**: 잔고 / 이번 라운드 베팅액 / 라운드 상태 / 베팅 한도·배당 표기.
+- 베팅 카운트다운 타이머(3초 이하 경고음), 칩 선택 UI. 상태가 바뀌어도 **섹션 크기가 흔들리지 않는 고정 레이아웃**.
+- **✨ 그래픽 화면(베타)**: 게임 화면 헤더 토글로 PixiJS(WebGL) 렌더링 전환(전 게임 공통 저장).
+  캔버스가 펠트·카드·칩·휠·릴을 그리고, 승리 골드 파티클·바카라 3번째 카드 스퀴즈·슬롯 릴 모션 블러 등
+  심화 연출 포함. 접근성 텍스트(카드 문자 표기)는 항상 병기, `/pixi-demo`에서 엔진 데모 확인 가능.
+- **논블로킹 토스트 알림**(없는 테이블·연결 안내 등), 모바일 터치 최적화(핀치줌/더블탭 확대/텍스트 선택 차단,
+  게임 입력만 동작) + 칩·승리 **진동 피드백**(음소거 시 함께 꺼짐).
 - **💬 테이블 채팅**: 같은 테이블 참가자끼리 실시간 채팅(접기 가능). 서버측 금칙어 마스킹 + 200자 제한 + 도배 방지(2초 간격).
 - 재접속 시 테이블 상태 스냅샷 자동 복구.
 
@@ -207,10 +221,12 @@ Web-Casino-Practice/
 │       ├── lib/api.js          # Fetch 기반 REST 래퍼(토큰·에러 처리)
 │       ├── stores/auth.js      # Pinia 인증 스토어
 │       ├── router/             # Vue Router + 인증/관리자 가드
-│       ├── composables/        # useSocket, useGameSocket, useSound, useCountUp
-│       ├── components/         # CardImg, TableHud, TableChat, JackpotWidget/Banner,
-│       │                       #   NoticeBoard, ReliefModal, AttendanceModal, 이펙트 등
-│       ├── views/              # 로비·로그인·마이페이지·리더보드·게임 4종
+│       ├── composables/        # useSocket, useGameSocket, useSound, useCountUp, useToast
+│       ├── components/         # CardImg, TableHud, TableChat, BetControls, BaccaratRoads,
+│       │                       #   ToastHost, SlotWinBurst, JackpotWidget/Banner, 이펙트 등
+│       ├── pixi/               # PixiJS(WebGL) 렌더링 — PixiStage/Scene/tween/easing/assets,
+│       │                       #   objects(CardSprite·particles), scenes(게임 4종+데모), 게임 래퍼
+│       ├── views/              # 로비·로그인·마이페이지·리더보드·게임 4종·픽시 데모
 │       │   └── admin/          # 유저·테이블·공지·규칙·통계 관리 화면
 │       ├── assets/cards/       # playing-cards-assets SVG (+ LICENSE)
 │       └── effects.css         # 카지노 연출 keyframes
@@ -225,8 +241,8 @@ Web-Casino-Practice/
 │       ├── sockets/            # index(기본 네임스페이스)·game-namespace(게임별)
 │       ├── middleware/auth.js  # JWT 검증·requireAuth·requireAdmin
 │       └── index.js            # 부트스트랩 + 리스닝(:4000)
-│   └── test/                   # Vitest 129개
-└── docs/superpowers/           # 설계 문서(spec) · 구현 계획(plan)
+│   └── test/                   # Vitest 172개
+└── docs/                       # 개선 계획서 · PixiJS 전환 계획/청사진 · 설계 문서
 ```
 
 ---
@@ -245,17 +261,19 @@ Web-Casino-Practice/
 ### Socket.IO
 - **기본 네임스페이스**: `balance:update`, `notice:new`, `jackpot:pool`/`jackpot:won`, `tables:update`, `session:banned`
 - **게임 네임스페이스** (`/blackjack`·`/roulette`·`/baccarat`, room `table:{id}`):
-  클라→서버 `table:join` / `seat:join` / `seat:leave` / `bet:place` / `action` / `chat:send`,
+  클라→서버 `table:join` / `seat:join` / `seat:leave` / `bet:place` / `bet:undo`(마지막 1건 되돌리기·환불) /
+  `bet:clear`(전체 취소·환불) / `action` / `chat:send`,
   서버→클라 `table:state`(스냅샷) / `chat:message` / `table:closed`
 
 ---
 
 ## 테스트
 ```bash
-npm test          # = npm --prefix server test (Vitest 129개: 게임 로직·정산·소켓·API·이코노미)
+npm test          # = npm --prefix server test (Vitest 172개: 게임 로직·정산·소켓·API·이코노미)
 ```
 게임 엔진(블랙잭 정산·소프트17, 바카라 드로잉 룰, 룰렛 배당, 슬롯 잭팟), 지갑 원자성·자금 보존,
-라운드 러너 상태 머신, 소켓 인증·차단, 관리자·통계 API를 커버합니다. 클라이언트는 `npm --prefix client run build`로 검증.
+라운드 러너 상태 머신(자동확정 베팅·되돌리기/전체취소·미베팅 좌석 비우기 포함), 소켓 인증·차단,
+관리자·통계 API를 커버합니다. 클라이언트는 `npm --prefix client run build`로 검증.
 
 ---
 
