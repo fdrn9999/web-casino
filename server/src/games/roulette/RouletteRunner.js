@@ -123,6 +123,37 @@ export class RouletteRunner {
     return { ok: true }
   }
 
+  // 내가 마지막으로 놓은 베팅 한 개를 물리고 즉시 환불한다(베팅 시간에만).
+  undoBet(userId) {
+    if (this.phase !== 'betting') return { error: '지금은 베팅 시간이 아닙니다.' }
+    for (let i = this.bets.length - 1; i >= 0; i--) {
+      if (this.bets[i].userId !== userId) continue
+      const [bet] = this.bets.splice(i, 1)
+      applyTransaction(this.db, {
+        userId, type: 'payout', amount: bet.amount, game: 'roulette',
+        refRoundId: this.roundId, reason: '베팅 되돌리기 환불',
+      })
+      this.broadcast()
+      return { ok: true, amount: bet.amount }
+    }
+    return { error: '되돌릴 베팅이 없습니다.' }
+  }
+
+  // 이번 라운드 내 베팅 전부를 취소하고 총액을 환불한다(베팅 시간에만).
+  clearBets(userId) {
+    if (this.phase !== 'betting') return { error: '지금은 베팅 시간이 아닙니다.' }
+    const mine = this.bets.filter((b) => b.userId === userId)
+    if (mine.length === 0) return { error: '취소할 베팅이 없습니다.' }
+    const total = mine.reduce((sum, b) => sum + b.amount, 0)
+    this.bets = this.bets.filter((b) => b.userId !== userId)
+    applyTransaction(this.db, {
+      userId, type: 'payout', amount: total, game: 'roulette',
+      refRoundId: this.roundId, reason: '베팅 취소 환불',
+    })
+    this.broadcast()
+    return { ok: true, amount: total }
+  }
+
   goWaiting() {
     this.phase = 'waiting'
     this.clearTimer()

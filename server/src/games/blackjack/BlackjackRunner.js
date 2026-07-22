@@ -118,16 +118,32 @@ export class BlackjackRunner {
     if (!Number.isInteger(seatIdx) || seatIdx < 0 || seatIdx >= SEAT_COUNT) return { error: '잘못된 좌석입니다.' }
     if (this.seats[seatIdx]) return { error: '이미 다른 플레이어가 앉아 있습니다.' }
     if (this.seatOf(userId) !== -1) return { error: '이미 착석 중입니다.' }
-    this.seats[seatIdx] = { userId, nickname, bet: 0, staked: 0, hands: [], activeHand: 0, leaving: false }
+    this.seats[seatIdx] = { userId, nickname, bet: 0, staked: 0, betLog: [], hands: [], activeHand: 0, leaving: false }
     if (this.phase === 'waiting') this.startBetting()
     this.onSeatsChange()
     this.broadcast()
     return { ok: true }
   }
 
+  // 수동 이탈(자리 뜨기): 칩을 올려 라운드에 참여 중이면 떠날 수 없다(자동확정 모델).
+  // 베팅 전(bet===0)에만 즉시 이탈 가능하며, 그 외에는 라운드가 끝날 때까지 좌석을 유지한다.
   leave(userId) {
     const idx = this.seatOf(userId)
     if (idx === -1) return { error: '착석 중이 아닙니다.' }
+    const seat = this.seats[idx]
+    if (seat.bet > 0) return { error: '라운드가 끝난 뒤에 자리를 뜰 수 있습니다.' }
+    this.seats[idx] = null
+    if (this.playerCount() === 0) this.goWaiting()
+    this.onSeatsChange()
+    this.broadcast()
+    return { ok: true }
+  }
+
+  // 연결 끊김: 강제 이탈이므로 진행 중 라운드는 유지(leaving 표시 후 정산에서 정리)하되,
+  // 베팅 참여 전이면 즉시 좌석을 비운다. 수동 leave의 "떠나기 불가" 제약과 별개다.
+  onDisconnect(userId) {
+    const idx = this.seatOf(userId)
+    if (idx === -1) return
     const seat = this.seats[idx]
     const inRound = seat.bet > 0 && ['betting', 'acting', 'dealer', 'result'].includes(this.phase)
     if (inRound) {
@@ -139,14 +155,12 @@ export class BlackjackRunner {
     }
     this.onSeatsChange()
     this.broadcast()
-    return { ok: true }
-  }
-
-  onDisconnect(userId) {
-    if (this.seatOf(userId) !== -1) this.leave(userId)
   }
 
   // ── 베팅 ──────────────────────────────────────────────
+  // 즉시 누적 베팅(칩을 얹을 때마다 서버에 바로 반영). 확정 버튼 없이, 베팅 시간이 끝나면
+  // 그 시점에 얹혀 있는 칩(seat.bet)으로 자동으로 라운드가 시작된다(closeBetting).
+  // 룰렛/바카라와 동일한 즉시 베팅 모델이라 확정 타이밍 경합·백그라운드 탭 문제에서 자유롭다.
   placeBet(userId, payload) {
     const amount = typeof payload === 'number' ? payload : payload?.amount
     if (this.stopped) return { error: '테이블이 종료되었습니다.' }
@@ -154,9 +168,16 @@ export class BlackjackRunner {
     const idx = this.seatOf(userId)
     if (idx === -1) return { error: '먼저 좌석에 앉아 주세요.' }
     const seat = this.seats[idx]
-    if (seat.bet > 0) return { error: '이미 베팅했습니다.' }
     const r = this.rules_
-    if (!Number.isInteger(amount) || amount < r.minBet || amount > r.maxBet) {
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return { error: '베팅 금액이 올바르지 않습니다.' }
+    }
+    // 첫 칩은 minBet 이상이어야 하고, 누적 총액은 항상 maxBet 이하여야 한다.
+    const newTotal = seat.bet + amount
+    if (seat.bet === 0 && amount < r.minBet) {
+      return { error: `베팅은 ${r.minBet}~${r.maxBet}칩 정수여야 합니다.` }
+    }
+    if (newTotal > r.maxBet) {
       return { error: `베팅은 ${r.minBet}~${r.maxBet}칩 정수여야 합니다.` }
     }
     try {
@@ -167,10 +188,48 @@ export class BlackjackRunner {
       if (e instanceof InsufficientBalanceError) return { error: e.message }
       throw e
     }
-    seat.bet = amount
-    seat.staked = amount
+    seat.bet = newTotal
+    seat.staked = newTotal
+    seat.betLog.push(amount)
     this.broadcast()
     return { ok: true }
+  }
+
+  // 마지막으로 얹은 칩 1개를 물리고 즉시 환불한다(베팅 시간에만).
+  undoBet(userId) {
+    if (this.phase !== 'betting') return { error: '지금은 베팅 시간이 아닙니다.' }
+    const idx = this.seatOf(userId)
+    if (idx === -1) return { error: '먼저 좌석에 앉아 주세요.' }
+    const seat = this.seats[idx]
+    if (!seat.betLog.length) return { error: '되돌릴 베팅이 없습니다.' }
+    const amount = seat.betLog.pop()
+    seat.bet -= amount
+    seat.staked = seat.bet
+    applyTransaction(this.db, {
+      userId, type: 'payout', amount, game: 'blackjack',
+      refRoundId: this.roundId, reason: '베팅 되돌리기 환불',
+    })
+    this.broadcast()
+    return { ok: true, amount }
+  }
+
+  // 이번 라운드에 얹은 내 칩 전부를 취소하고 총액을 환불한다(베팅 시간에만).
+  clearBets(userId) {
+    if (this.phase !== 'betting') return { error: '지금은 베팅 시간이 아닙니다.' }
+    const idx = this.seatOf(userId)
+    if (idx === -1) return { error: '먼저 좌석에 앉아 주세요.' }
+    const seat = this.seats[idx]
+    if (seat.bet <= 0) return { error: '취소할 베팅이 없습니다.' }
+    const amount = seat.bet
+    seat.bet = 0
+    seat.staked = 0
+    seat.betLog = []
+    applyTransaction(this.db, {
+      userId, type: 'payout', amount, game: 'blackjack',
+      refRoundId: this.roundId, reason: '베팅 취소 환불',
+    })
+    this.broadcast()
+    return { ok: true, amount }
   }
 
   // ── 페이즈 전이 ───────────────────────────────────────
@@ -192,6 +251,7 @@ export class BlackjackRunner {
     for (const seat of this.seats.filter(Boolean)) {
       seat.bet = 0
       seat.staked = 0
+      seat.betLog = []
       seat.hands = []
       seat.activeHand = 0
     }
@@ -199,11 +259,24 @@ export class BlackjackRunner {
       "INSERT INTO rounds (game, table_id) VALUES ('blackjack', ?)"
     ).run(this.table.id)
     this.roundId = Number(lastInsertRowid)
+    // 이 베팅 창이 시작될 때 앉아 있던 유저들 — 창이 끝날 때까지 칩을 올리지 않으면 좌석을 비운다.
+    // (창 중간에 앉은 유저는 다음 창까지 유예 — 방금 앉자마자 쫓겨나는 것을 막는다)
+    this.bettingWindowIds = new Set(this.seats.filter(Boolean).map((s) => s.userId))
     this.schedule(this.rules_.betSeconds * 1000, () => this.closeBetting())
     this.broadcast()
   }
 
   closeBetting() {
+    // 베팅 창 전체를 보내고도 베팅하지 않은 좌석은 비운다(좌석 독점 방지, 대기 중인 다른 플레이어에게 양보)
+    let kicked = false
+    this.seats = this.seats.map((s) => {
+      if (s && s.bet === 0 && this.bettingWindowIds?.has(s.userId)) {
+        kicked = true
+        return null
+      }
+      return s
+    })
+    if (kicked) this.onSeatsChange()
     const bettingSeats = this.seats.filter((s) => s?.bet > 0)
     if (bettingSeats.length === 0) {
       this.db.prepare('DELETE FROM rounds WHERE id = ?').run(this.roundId)

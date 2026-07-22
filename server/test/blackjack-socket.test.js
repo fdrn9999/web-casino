@@ -9,6 +9,7 @@ import { startRunner } from '../src/games/index.js'
 import { createTable } from '../src/services/tables.js'
 import { saveSettings } from '../src/services/settings.js'
 import { clearRunners } from '../src/games/registry.js'
+import { applyTransaction } from '../src/services/wallet.js'
 
 describe('blackjack socket', () => {
   let db, httpServer, io, port, token, tableId, app
@@ -59,8 +60,10 @@ describe('blackjack socket', () => {
     expect(bet.ok).toBe(true)
     expect(db.prepare("SELECT balance FROM users WHERE username = 'bjsock'").get().balance).toBe(9500)
 
-    const badBet = await socket.emitWithAck('bet:place', { amount: 500 })
-    expect(badBet.error).toBeTruthy()
+    // 확정 버튼 없는 즉시 누적 베팅: 같은 좌석에 칩을 더 얹으면 합산된다(자동확정 모델).
+    const more = await socket.emitWithAck('bet:place', { amount: 500 })
+    expect(more.ok).toBe(true)
+    expect(db.prepare("SELECT balance FROM users WHERE username = 'bjsock'").get().balance).toBe(9000)
 
     socket.close()
   })
@@ -128,5 +131,28 @@ describe('blackjack socket', () => {
     expect(banned.reason).toBe('banned')
     await disconnectPromise
     expect(socket.connected).toBe(false)
+  })
+
+  // BUG-01: 게임 네임스페이스 소켓(딥링크/새로고침으로 테이블에 바로 들어온 세션)도
+  // 잔고 변경 이벤트를 받아야 헤더/HUD가 새로고침 없이 갱신된다.
+  it('게임 네임스페이스(/blackjack) 소켓도 balance:update를 받는다', async () => {
+    const signup = await request(app).post('/api/auth/signup')
+      .send({ username: 'bjsock4', password: 'password1', nickname: '비제이4', agreed: true })
+    const userId = signup.body.user.id
+    const token4 = signup.body.token
+    const socket = ioc(`http://localhost:${port}/blackjack`, { auth: { token: token4 }, transports: ['websocket'] })
+    await new Promise((res, rej) => {
+      socket.on('connect', res)
+      socket.on('connect_error', rej)
+    })
+
+    // 루트 네임스페이스는 전혀 연결하지 않은 채(딥링크 재현) 게임 네임스페이스만으로도
+    // walletEvents 브로드캐스트를 수신해야 한다.
+    const balancePromise = new Promise((r) => socket.once('balance:update', r))
+    applyTransaction(db, { userId, type: 'daily_bonus', amount: 1234 })
+    const payload = await balancePromise
+    expect(payload.balance).toBe(10000 + 1234)
+
+    socket.close()
   })
 })

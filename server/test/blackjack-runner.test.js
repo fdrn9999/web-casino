@@ -66,13 +66,16 @@ describe('BlackjackRunner', () => {
     expect(r.sit(u1, 'p1', 1).error).toBeTruthy()
   })
 
-  it('베팅하면 즉시 차감되고, 한도 위반·중복 베팅은 거부', () => {
+  it('베팅하면 즉시 차감되고, 최초 minBet 미달은 거부·이후 칩은 누적된다(확정 버튼 없는 자동확정 모델)', () => {
     const r = makeRunner()
     r.sit(u1, 'p1', 0)
-    expect(r.placeBet(u1, 50).error).toBeTruthy()
+    expect(r.placeBet(u1, 50).error).toBeTruthy() // 첫 칩이 minBet(100) 미만 → 거부
     expect(r.placeBet(u1, 500).ok).toBe(true)
     expect(db.prepare('SELECT balance FROM users WHERE id = ?').get(u1).balance).toBe(9500)
-    expect(r.placeBet(u1, 500).error).toBeTruthy()
+    // 즉시 누적: 같은 좌석에 칩을 더 얹으면 합산되고 즉시 차감된다
+    expect(r.placeBet(u1, 500).ok).toBe(true)
+    expect(db.prepare('SELECT balance FROM users WHERE id = ?').get(u1).balance).toBe(9000)
+    expect(r.snapshot().seats[0].bet).toBe(1000)
   })
 
   it('베팅 마감 → 딜링 → 전원 자동 스탠드 → 딜러 → 정산 → 다음 베팅 (풀 사이클)', () => {
@@ -140,7 +143,7 @@ describe('BlackjackRunner', () => {
     expect(r.seats[0].hands[0].done).toBe(true)
   })
 
-  it('베팅 후 이탈해도 칩이 소멸되지 않는다', () => {
+  it('칩을 올린 뒤엔 수동 이탈 불가(떠나기 잠금)이며, 연결 끊김은 라운드 유지 후 정산에서 정리된다', () => {
     // rng 고정: 내추럴 블랙잭 없는 결정적 딜로 페이즈 단언 안정화(칩 보존 단언은 그대로).
     const r = makeRunner(() => 0.1)
     r.sit(u1, 'p1', 0)
@@ -148,9 +151,11 @@ describe('BlackjackRunner', () => {
     r.placeBet(u1, 1000)
     r.placeBet(u2, 500)
     expect(r.snapshot().phase).toBe('betting')
-    // 베팅 완료 후, 베팅 페이즈 도중 이탈 시도 (칩은 이미 차감된 상태)
-    expect(r.leave(u1).ok).toBe(true)
-    // 좌석은 즉시 비워지지 않고 leaving 플래그만 세팅되어 라운드에 계속 참여해야 한다
+    // 칩을 올린 뒤엔 수동으로 자리를 뜰 수 없다(자동확정 모델의 떠나기 잠금)
+    expect(r.leave(u1).error).toBeTruthy()
+    expect(r.seats[0]).not.toBeNull()
+    // 연결 끊김(강제 이탈)은 라운드에 계속 참여시키되 leaving 표시 후 정산에서 정리한다
+    r.onDisconnect(u1)
     expect(r.seats[0]).not.toBeNull()
     expect(r.seats[0].leaving).toBe(true)
 

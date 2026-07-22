@@ -26,6 +26,11 @@ export function createSocketServer(httpServer, db) {
 
   walletEvents.on('balance', ({ userId, balance }) => {
     io.to(`user:${userId}`).emit('balance:update', { balance })
+    // 게임 네임스페이스(/blackjack 등) 소켓은 루트 네임스페이스를 구독하지 않으므로
+    // session:banned와 동일한 패턴으로 각 게임 네임스페이스에도 재전파한다.
+    for (const gameKey of GAME_KEYS) {
+      io.of('/' + gameKey).to(`user:${userId}`).emit('balance:update', { balance })
+    }
   })
 
   jackpotEvents.on('pool', ({ pool }) => io.emit('jackpot:pool', { pool }))

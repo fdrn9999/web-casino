@@ -49,6 +49,21 @@ export function attachGameNamespace(io, db, gameKey) {
       cb(r ? r.placeBet(socket.data.userId, payload) : { error: '테이블에 먼저 입장하세요.' })
     })
 
+    // 마지막 베팅 1건 되돌리기 / 이번 라운드 내 베팅 전체 취소(즉시 베팅형 게임: 룰렛·바카라)
+    socket.on('bet:undo', (arg, maybeCb) => {
+      const cb = typeof arg === 'function' ? arg : (maybeCb ?? (() => {}))
+      const r = runner()
+      if (!r) return cb({ error: '테이블에 먼저 입장하세요.' })
+      cb(r.undoBet ? r.undoBet(socket.data.userId) : { error: '이 게임에서는 지원하지 않습니다.' })
+    })
+
+    socket.on('bet:clear', (arg, maybeCb) => {
+      const cb = typeof arg === 'function' ? arg : (maybeCb ?? (() => {}))
+      const r = runner()
+      if (!r) return cb({ error: '테이블에 먼저 입장하세요.' })
+      cb(r.clearBets ? r.clearBets(socket.data.userId) : { error: '이 게임에서는 지원하지 않습니다.' })
+    })
+
     socket.on('action', ({ move } = {}, cb = () => {}) => {
       const r = runner()
       cb(r ? r.action(socket.data.userId, move) : { error: '테이블에 먼저 입장하세요.' })
