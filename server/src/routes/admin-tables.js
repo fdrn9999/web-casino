@@ -50,6 +50,9 @@ export function adminTablesRouter(db, ctx) {
   r.post('/:id/reopen', (req, res) => {
     const table = getTable(db, req.params.id)
     if (!table) return res.status(404).json({ error: '테이블을 찾을 수 없습니다.' })
+    if (table.status === 'open' || getRunner(Number(req.params.id))) {
+      return res.status(409).json({ error: '이미 열려 있는 테이블입니다.' })
+    }
     setTableStatus(db, req.params.id, 'open')
     ctx.startRunner?.(getTable(db, req.params.id))
     broadcastTables(db, ctx.io)
