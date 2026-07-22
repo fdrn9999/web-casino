@@ -3,3 +3,53 @@
 body {
   @apply bg-emerald-950 text-emerald-50 antialiased;
 }
+
+/* ── 모바일 터치 UX 하드닝 ─────────────────────────────────────────────────
+   목표: 더블탭 확대·핀치줌·텍스트 선택·롱프레스 메뉴·탭 하이라이트·요소 드래그 등
+   브라우저 기본 제스처를 제거하고 게임 입력만 남긴다. */
+
+html,
+body {
+  /* 당겨서 새로고침·경계 바운스·스크롤 체이닝 차단 */
+  overscroll-behavior: none;
+}
+
+body {
+  /* 더블탭 확대 제거(스크롤·탭은 유지) — 콘텐츠가 뷰포트보다 길 때 페이지 스크롤은 살려야
+     베팅 패널 접근이 가능하므로, 전면 touch-action:none 대신 manipulation을 기본값으로 둔다 */
+  touch-action: manipulation;
+  /* 탭 하이라이트 사각 플래시 제거 */
+  -webkit-tap-highlight-color: transparent;
+  /* 롱프레스 시 복사/저장 콜아웃 메뉴 차단(iOS) */
+  -webkit-touch-callout: none;
+  /* 게임 UI 전반의 텍스트 선택 방지 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 입력 필드(채팅 등)에서는 선택/편집이 되어야 한다 */
+input,
+textarea,
+[contenteditable] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 카드·칩 등 이미지/SVG가 드래그로 끌려나오지 않게 */
+img,
+svg {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+/* 게임 입력 표면(카드 테이블·베팅 보드·휠·칩 트레이): 스크롤/제스처 완전 차단.
+   빠른 연타·드래그가 스크롤이나 확대로 새지 않고 전부 게임 입력으로만 처리된다. */
+.game-surface {
+  touch-action: none;
+}
+
+/* 넓어서 가로 스크롤이 필요한 게임 보드(룰렛 번호판): 가로 팬만 허용하고
+   세로 스크롤·더블탭 확대·핀치줌은 차단한다 */
+.game-surface-panx {
+  touch-action: pan-x;
+}

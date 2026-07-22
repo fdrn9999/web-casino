@@ -25,6 +25,17 @@ function tone({ freq = 440, duration = 0.1, type = 'sine', volume = 0.15, when =
   osc.stop(t0 + duration + 0.02)
 }
 
+// 모바일 촉각 피드백 — 사운드와 함께 짧게 진동한다(미지원 브라우저는 무시).
+// 음소거 시 진동도 끈다(하나의 '조용히' 스위치로 동작).
+function buzz(pattern) {
+  if (muted.value) return
+  try {
+    navigator.vibrate?.(pattern)
+  } catch {
+    // 미지원/권한 문제는 조용히 무시
+  }
+}
+
 function noise({ duration = 0.06, volume = 0.1, when = 0 }) {
   if (muted.value) return
   const c = ctx()
@@ -51,6 +62,7 @@ export const sfx = {
     noise({ duration: 0.014, volume: 0.045 })
     tone({ freq: 2150 + detune, duration: 0.07, type: 'triangle', volume: 0.12 })
     tone({ freq: 3500 + detune * 1.4, duration: 0.05, type: 'sine', volume: 0.05, when: 0.012 })
+    buzz(10)
   },
   // 액면 자동 병합(예: 100칩 5개 -> 500칩 1개) 시 재생하는, chip()보다 살짝 풍성한 겹클링.
   // 칩이 "쌓이며 정착"하는 느낌을 주기 위해 짧게 두세 번 겹쳐 울리고 옅은 노이즈로 마무리한다.
@@ -83,10 +95,40 @@ export const sfx = {
     noise({ duration: 0.09, volume: 0.07 })
     tone({ freq: 500, duration: 0.1, type: 'triangle', volume: 0.06, slideTo: 900 })
   },
+  // 슈 셔플 "촤라라락": 카드가 리플로 떨어지는 빠른 종이 트랜지언트 연타.
+  // 간격이 점점 촘촘해졌다가 풀리는 리듬으로 실제 리플 셔플의 가속감을 흉내낸다.
+  shuffle: () => {
+    let when = 0
+    for (let i = 0; i < 16; i++) {
+      // 앞쪽은 성기게, 중반에 가장 촘촘하게, 끝에서 다시 풀리는 간격 곡선
+      const dist = Math.abs(i - 9) / 9
+      when += 0.022 + dist * 0.03 + Math.random() * 0.008
+      noise({ duration: 0.018, volume: 0.05 + (1 - dist) * 0.03, when })
+    }
+    // 마지막에 덱을 "탁" 정리하는 마무리 톤
+    tone({ freq: 130, duration: 0.08, type: 'sine', volume: 0.08, when: when + 0.1 })
+    noise({ duration: 0.05, volume: 0.08, when: when + 0.1 })
+  },
   spinStart: () => tone({ freq: 200, duration: 0.3, type: 'sawtooth', volume: 0.08, slideTo: 600 }),
   spinTick: () => tone({ freq: 900, duration: 0.03, type: 'square', volume: 0.05 }),
   win: () => {
     [523, 659, 784, 1047].forEach((f, i) => tone({ freq: f, duration: 0.15, type: 'triangle', volume: 0.14, when: i * 0.12 }))
+    buzz([25, 50, 25])
+  },
+  // 빠칭코풍 슬롯 당첨: 칩 쏟아지는 캐스케이드 + 밝은 상승 팡파레 + 종 딩. big이면 화려한 플러리시 추가.
+  slotWin: (big = false) => {
+    sfx.chipWin()
+    buzz(big ? [40, 60, 40, 60, 90] : [25, 45, 25])
+    ;[784, 988, 1319].forEach((f, i) =>
+      tone({ freq: f, duration: 0.16, type: 'triangle', volume: 0.15, when: i * 0.09 }))
+    tone({ freq: 2637, duration: 0.28, type: 'sine', volume: 0.09, when: 0.3 }) // 종 딩
+    if (big) {
+      ;[1047, 1319, 1568, 2093, 2637].forEach((f, i) =>
+        tone({ freq: f, duration: 0.22, type: 'triangle', volume: 0.13, when: 0.42 + i * 0.1 }))
+      for (let i = 0; i < 10; i++) {
+        tone({ freq: 1800 + Math.random() * 900, duration: 0.06, type: 'square', volume: 0.05, when: 0.42 + i * 0.05 })
+      }
+    }
   },
   lose: () => {
     tone({ freq: 330, duration: 0.2, type: 'sine', volume: 0.1 })

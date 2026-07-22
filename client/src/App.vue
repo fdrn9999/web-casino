@@ -6,6 +6,7 @@ import { useSound } from './composables/useSound'
 import { useCountUp } from './composables/useCountUp'
 import JackpotBanner from './components/JackpotBanner.vue'
 import RestReminder from './components/RestReminder.vue'
+import ToastHost from './components/ToastHost.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -28,6 +29,7 @@ function logout() {
 <template>
   <div class="min-h-screen flex flex-col">
     <JackpotBanner />
+    <ToastHost />
     <RestReminder v-if="auth.isLoggedIn" />
     <header
       v-if="auth.isLoggedIn"

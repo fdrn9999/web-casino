@@ -48,22 +48,25 @@ onUnmounted(() => raf && cancelAnimationFrame(raf))
 </script>
 
 <template>
-  <!-- 남은 비율에 따라 색이 emerald→amber→red로 바뀌고, 촉박할수록(≤0.25) 급박한 펄스로 베팅을 재촉한다 -->
-  <div v-if="endsAt" class="w-full" :class="{ 'timer-urgent': fraction > 0 && fraction <= 0.25 && !reduced }">
-    <div class="relative h-2.5 w-full overflow-hidden rounded-full bg-black/40 ring-1 ring-white/10">
-      <div
-        class="h-full rounded-full transition-[background-color] duration-300"
-        :class="fraction > 0.5 ? 'bg-emerald-400' : fraction > 0.25 ? 'bg-amber-400' : 'bg-red-500'"
-        :style="{ width: `${fraction * 100}%` }"
-      />
+  <!-- 남은 비율에 따라 색이 emerald→amber→red로 바뀌고, 촉박할수록(≤0.25) 급박한 펄스로 베팅을 재촉한다.
+       타이머가 없는 페이즈에도 같은 높이를 차지해 아래 콘텐츠가 위아래로 튀지 않는다(레이아웃 고정). -->
+  <div class="min-h-[40px] w-full">
+    <div v-if="endsAt" :class="{ 'timer-urgent': fraction > 0 && fraction <= 0.25 && !reduced }">
+      <div class="relative h-2.5 w-full overflow-hidden rounded-full bg-black/40 ring-1 ring-white/10">
+        <div
+          class="h-full rounded-full transition-[background-color] duration-300"
+          :class="fraction > 0.5 ? 'bg-emerald-400' : fraction > 0.25 ? 'bg-amber-400' : 'bg-red-500'"
+          :style="{ width: `${fraction * 100}%` }"
+        />
+      </div>
+      <p
+        class="mt-1 text-center text-sm font-bold tabular-nums transition-colors"
+        :class="fraction > 0.5 ? 'text-emerald-300' : fraction > 0.25 ? 'text-amber-300' : 'text-red-400'"
+      >
+        <span v-if="fraction > 0.25">{{ secondsLeft }}초</span>
+        <span v-else>⏰ {{ secondsLeft }}초 — 서둘러 베팅하세요!</span>
+      </p>
     </div>
-    <p
-      class="mt-1 text-center text-sm font-bold tabular-nums transition-colors"
-      :class="fraction > 0.5 ? 'text-emerald-300' : fraction > 0.25 ? 'text-amber-300' : 'text-red-400'"
-    >
-      <span v-if="fraction > 0.25">{{ secondsLeft }}초</span>
-      <span v-else>⏰ {{ secondsLeft }}초 — 서둘러 베팅하세요!</span>
-    </p>
   </div>
 </template>
 

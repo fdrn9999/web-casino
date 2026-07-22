@@ -18,8 +18,10 @@ export function cardRankSuit(code) {
   return { rank, suit, symbol: SUIT_SYMBOL[suit] ?? suit, isRed: RED_SUITS.has(suit), hidden: false }
 }
 
-// 카드 한 장의 짧은 텍스트("A♠", "10♥"). 아직 안 보이는 카드는 뒷면 기호로 표시(내용 유출 금지).
+// 카드 한 장의 짧은 텍스트("A♠", "10♥"). 아직 안 보이는 카드는 '?'로 표시(내용 유출 금지).
+// 주의: 유니코드 플레잉카드 글리프(🂠, U+1F0A0 블록)는 Windows 한글 폰트에 없어 깨진 네모로
+// 렌더링되므로 사용 금지 — 어디서나 안전한 ASCII '?'를 쓴다.
 export function cardShortText(code) {
   const { rank, symbol, hidden } = cardRankSuit(code)
-  return hidden ? '🂠' : `${rank}${symbol}`
+  return hidden ? '?' : `${rank}${symbol}`
 }

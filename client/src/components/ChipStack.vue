@@ -15,9 +15,11 @@ const props = defineProps({
 
 // 큰 액면이 배열 앞쪽(0번) — 더미의 맨 아래에 그린다.
 const chips = computed(() => chipBreakdown(props.amount, { maxChips: props.maxChips }))
-// 칩끼리 살짝 겹치도록 하는 세로 오프셋(더미가 비스듬히 보이는 느낌)
-const offset = computed(() => Math.max(5, Math.round(props.size * 0.22)))
-const pileHeight = computed(() => props.size + offset.value * Math.max(chips.value.length - 1, 0))
+// 칩 옆면 두께(CasinoChip stacked 압출과 동일 공식) — 아래 칩은 두께 띠 + 얇은 앞면 테만 보여
+// 실제 칩 더미처럼 보인다.
+const sideTh = computed(() => Math.max(2, Math.round(props.size * 0.12)))
+const offset = computed(() => sideTh.value + Math.max(3, Math.round(props.size * 0.08)))
+const pileHeight = computed(() => props.size + sideTh.value + offset.value * Math.max(chips.value.length - 1, 0))
 </script>
 
 <template>
@@ -29,8 +31,9 @@ const pileHeight = computed(() => props.size + offset.value * Math.max(chips.val
           :key="i"
           :value="v"
           :size="size"
+          stacked
           class="chip-stack-layer"
-          :style="{ bottom: `${i * offset}px`, zIndex: i }"
+          :style="{ bottom: `${i * offset + sideTh}px`, zIndex: i }"
         />
       </TransitionGroup>
     </div>
@@ -48,8 +51,8 @@ const pileHeight = computed(() => props.size + offset.value * Math.max(chips.val
   transition: bottom 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .chip-stack-label {
-  margin-top: 2px;
-  font-size: 10px;
+  margin-top: 3px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1;
   color: #fde68a;
