@@ -1,13 +1,19 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PhaseTimer from '../components/PhaseTimer.vue'
+
+// PixiJS(WebGL) 렌더러 — 그래픽 모드를 켠 유저만 번들을 내려받도록 async import.
+const RoulettePixi = defineAsyncComponent(() => import('../pixi/RoulettePixi.vue'))
 import TableChat from '../components/TableChat.vue'
 import TableHud from '../components/TableHud.vue'
 import ChipTray from '../components/ChipTray.vue'
 import ChipStack from '../components/ChipStack.vue'
+import BetControls from '../components/BetControls.vue'
 import WinCascade from '../components/WinCascade.vue'
 import { chipStyleFor } from '../lib/chips'
+import { nearDeadline, DEADLINE_GUARD_MESSAGE } from '../lib/betGuard'
+import { WHEEL_ORDER, SEG, RED_NUMBERS, pocketHex } from '../lib/rouletteWheel'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
@@ -23,10 +29,19 @@ const error = ref('')
 const sending = ref(false)
 const chipValue = ref(100) // 활성 칩(현재 선택된 베팅 단위)
 const cascade = ref(null)
+// 그래픽(Pixi) 모드 — 전 게임 공통 토글(localStorage 'pixi')
+const usePixi = ref(route.query.pixi === '1' || localStorage.getItem('pixi') === '1')
+function togglePixi() {
+  usePixi.value = !usePixi.value
+  try {
+    localStorage.setItem('pixi', usePixi.value ? '1' : '0')
+  } catch {
+    // 저장 실패는 무시(사생활 모드 등)
+  }
+}
 
-const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36])
+const RED = RED_NUMBERS
 const colorClass = (n) => (n === 0 ? 'bg-emerald-600' : RED.has(n) ? 'bg-red-700' : 'bg-neutral-900')
-const pocketHex = (n) => (n === 0 ? '#059669' : RED.has(n) ? '#b91c1c' : '#171717')
 const OUTSIDE_BUTTONS = [
   { type: 'red', label: '레드' }, { type: 'black', label: '블랙' },
   { type: 'odd', label: '홀' }, { type: 'even', label: '짝' },
@@ -142,9 +157,6 @@ const canRepeatLastBet = computed(() =>
   lastRoundBets.value.length > 0 && lastRoundTotal.value > 0 && lastRoundTotal.value <= (auth.user?.balance ?? 0)
 )
 
-// 유러피언 휠 실제 배치 순서
-const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26]
-const SEG = 360 / WHEEL_ORDER.length
 const wheelDeg = ref(0)
 const wheelSpinning = ref(false)
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -290,12 +302,31 @@ function betCrossesDenomination(payload, amt) {
   return crossesDenomination(myOutsideBetTotals.value[payload.type] ?? 0, amt)
 }
 
+const lastTarget = ref(null) // 마지막으로 베팅한 대상 — '최대(올인)' 대상
+const canBetMaxRou = computed(() => {
+  if (state.value?.phase !== 'betting' || !lastTarget.value) return false
+  const cap = Math.min(state.value.rules.maxBet ?? 0, auth.user?.balance ?? 0)
+  return cap >= (state.value.rules.minBet ?? 0)
+})
+
 async function placeBet(payload, amountOverride) {
   // 라운드트립 중 중복 클릭 방지 (서버도 중복은 거부하지만 불필요한 요청/에러 노이즈를 줄임)
   if (sending.value) return
+  // 마감 직전 보호: 도착 시점 레이스로 조용히 거부/의도치 않은 접수가 되는 것을 예방
+  if (nearDeadline(state.value)) {
+    error.value = DEADLINE_GUARD_MESSAGE
+    return
+  }
+  const { minBet, maxBet } = state.value.rules
+  const balance = auth.user?.balance ?? 0
+  // 칩을 잔고·테이블 한도로 자동 클램프 — 큰 칩을 눌러도 한도까지만(올인 편의, 전 게임 공통).
+  const amt = Math.min(amountOverride ?? chipValue.value, balance, maxBet)
+  if (amt < minBet) {
+    error.value = `잔고가 최소 베팅(${minBet.toLocaleString()}칩)에 미치지 못합니다.`
+    return
+  }
   sending.value = true
   error.value = ''
-  const amt = amountOverride ?? chipValue.value
   sfx.chip()
   if (betCrossesDenomination(payload, amt)) sfx.chipStack()
   try {
@@ -304,10 +335,27 @@ async function placeBet(payload, amountOverride) {
       error.value = res.error
     } else {
       roundBets.value = [...roundBets.value, { ...payload, amount: amt }]
+      lastTarget.value = { type: payload.type, numbers: payload.numbers ?? null }
     }
   } finally {
     sending.value = false
   }
+}
+
+// 최대(올인): 마지막 베팅 대상에 한도(테이블 최대·잔고 중 작은 값)만큼 한 번에 건다(전 게임 공통 편의).
+async function betMaxTarget() {
+  if (state.value?.phase !== 'betting' || sending.value) return
+  const t = lastTarget.value
+  if (!t) {
+    error.value = '먼저 베팅할 곳을 누르세요.'
+    return
+  }
+  const cap = Math.min(state.value.rules.maxBet ?? 0, auth.user?.balance ?? 0)
+  if (cap < state.value.rules.minBet) {
+    error.value = '잔고가 부족합니다.'
+    return
+  }
+  await placeBet(t, cap)
 }
 
 // 베팅판의 핫스팟(스트레이트/스플릿/스트리트/코너/라인) 클릭 시 즉시 인사이드 베팅을 넣는다.
@@ -325,6 +373,42 @@ async function repeatLastBet() {
   }
 }
 
+// 마지막 베팅 1건 되돌리기 — 서버가 해당 금액을 즉시 환불한다
+async function undoLastBet() {
+  if (state.value?.phase !== 'betting' || sending.value || myBets.value.length === 0) return
+  sending.value = true
+  error.value = ''
+  try {
+    const res = await game.emitAck('bet:undo')
+    if (res.error) {
+      error.value = res.error
+    } else {
+      roundBets.value = roundBets.value.slice(0, -1)
+      sfx.chip()
+    }
+  } finally {
+    sending.value = false
+  }
+}
+
+// 이번 라운드 내 베팅 전체 취소 — 총액 즉시 환불
+async function clearMyBets() {
+  if (state.value?.phase !== 'betting' || sending.value || myBets.value.length === 0) return
+  sending.value = true
+  error.value = ''
+  try {
+    const res = await game.emitAck('bet:clear')
+    if (res.error) {
+      error.value = res.error
+    } else {
+      roundBets.value = []
+      sfx.chipStack()
+    }
+  } finally {
+    sending.value = false
+  }
+}
+
 const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinning: '스핀!', result: '결과' }
 </script>
 
@@ -338,13 +422,28 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
       <span class="rounded-full bg-emerald-800 px-2 py-0.5 text-xs">{{ PHASE_LABELS[state.phase] }}</span>
       <span class="text-xs text-amber-500/80">유러피언 룰렛 (싱글 제로)</span>
       <span class="text-xs text-emerald-400">👥 {{ state.players.length }}</span>
+      <button class="rounded-full border border-amber-500/40 px-2.5 py-0.5 text-xs font-bold text-amber-300 hover:bg-amber-500/10"
+        :title="usePixi ? '기존 화면으로 전환' : 'PixiJS(WebGL) 렌더링으로 전환'" @click="togglePixi">
+        {{ usePixi ? '🖼 기본 화면' : '✨ 그래픽 화면(베타)' }}</button>
       <button class="ml-auto text-sm text-emerald-300 hover:text-amber-300" @click="router.push('/')">로비로</button>
     </div>
 
     <PhaseTimer :ends-at="state.phaseEndsAt" :total-seconds="state.rules.betSeconds" />
 
-    <!-- 결과/휠 -->
-    <section class="rounded-2xl border border-amber-500/20 bg-emerald-900/50 p-4 text-center">
+    <!-- 그래픽(Pixi) 모드: 휠/볼 스핀을 캔버스가 프레임 단위로 그린다. 히스토리는 아래 DOM 공통 -->
+    <section v-if="usePixi" class="space-y-2">
+      <div class="pixi-rou-frame game-surface relative overflow-hidden rounded-2xl border border-amber-500/20 shadow-2xl">
+        <RoulettePixi :get-state="() => state" :subscribe="game.onState" />
+      </div>
+      <div class="flex flex-wrap justify-center gap-1">
+        <span v-for="(h, i) in state.history" :key="i"
+          class="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
+          :class="colorClass(h.n)">{{ h.n }}</span>
+      </div>
+    </section>
+
+    <!-- 결과/휠 (기본 DOM 렌더러) -->
+    <section v-else class="game-surface rounded-2xl border border-amber-500/20 bg-emerald-900/50 p-4 text-center">
       <div class="relative mx-auto wheel-disc">
         <!-- 포인터 -->
         <div class="pointer-arrow absolute left-1/2 top-0 z-30 -translate-x-1/2 -translate-y-1 text-xl text-amber-400 drop-shadow">▼</div>
@@ -400,8 +499,8 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
       </div>
     </section>
 
-    <!-- 번호판(베팅 보드) -->
-    <section class="rounded-2xl border border-emerald-800 bg-emerald-900/50 p-3">
+    <!-- 번호판(베팅 보드): 가로 스크롤이 필요하므로 pan-x만 허용 -->
+    <section class="game-surface-panx rounded-2xl border border-emerald-800 bg-emerald-900/50 p-3">
       <div class="board-scroll">
       <div class="board-min-width relative">
         <div class="grid grid-cols-13 gap-1" style="grid-template-columns: repeat(13, minmax(0, 1fr));">
@@ -410,7 +509,7 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
             :class="[colorClass(0), state.phase === 'result' && state.result === 0 ? 'fx-glow-win' : '']"
             style="grid-row: span 3;" @click="placeInside([0])">0
             <div v-if="insideTotal([0])" class="bet-chip-stack-pos">
-              <ChipStack :amount="insideTotal([0])" :size="14" :max-chips="4" :show-label="false" />
+              <ChipStack :amount="insideTotal([0])" :size="16" :max-chips="4" :show-label="false" />
             </div>
           </button>
           <template v-for="row in 3">
@@ -421,7 +520,7 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
               @click="placeInside([(col - 1) * 3 + (4 - row)])">
               {{ (col - 1) * 3 + (4 - row) }}
               <div v-if="insideTotal([(col - 1) * 3 + (4 - row)])" class="bet-chip-stack-pos">
-                <ChipStack :amount="insideTotal([(col - 1) * 3 + (4 - row)])" :size="14" :max-chips="4" :show-label="false" />
+                <ChipStack :amount="insideTotal([(col - 1) * 3 + (4 - row)])" :size="16" :max-chips="4" :show-label="false" />
               </div>
             </button>
           </template>
@@ -435,7 +534,7 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
             :disabled="sending || state.phase !== 'betting'"
             :aria-label="`스플릿 베팅 ${h.numbers.join('-')}`"
             @click="placeInside(h.numbers)">
-            <ChipStack v-if="insideTotal(h.numbers)" :amount="insideTotal(h.numbers)" :size="12" :max-chips="3" :show-label="false" class="hotspot-chipstack" />
+            <ChipStack v-if="insideTotal(h.numbers)" :amount="insideTotal(h.numbers)" :size="14" :max-chips="3" :show-label="false" class="hotspot-chipstack" />
           </button>
           <button v-for="h in STREET_HOTSPOTS" :key="`st-${h.numbers.join('-')}`" type="button"
             class="hotspot hotspot-edge-h" :class="{ 'is-occupied': insideTotal(h.numbers) > 0, 'fx-glow-win': isWinningSpot(h.numbers) }"
@@ -443,7 +542,7 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
             :disabled="sending || state.phase !== 'betting'"
             :aria-label="`스트리트 베팅 ${h.numbers.join('-')}`"
             @click="placeInside(h.numbers)">
-            <ChipStack v-if="insideTotal(h.numbers)" :amount="insideTotal(h.numbers)" :size="12" :max-chips="3" :show-label="false" class="hotspot-chipstack" />
+            <ChipStack v-if="insideTotal(h.numbers)" :amount="insideTotal(h.numbers)" :size="14" :max-chips="3" :show-label="false" class="hotspot-chipstack" />
           </button>
           <button v-for="h in CORNER_HOTSPOTS" :key="`co-${h.numbers.join('-')}`" type="button"
             class="hotspot hotspot-corner" :class="{ 'is-occupied': insideTotal(h.numbers) > 0, 'fx-glow-win': isWinningSpot(h.numbers) }"
@@ -451,7 +550,7 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
             :disabled="sending || state.phase !== 'betting'"
             :aria-label="`코너 베팅 ${h.numbers.join('-')}`"
             @click="placeInside(h.numbers)">
-            <ChipStack v-if="insideTotal(h.numbers)" :amount="insideTotal(h.numbers)" :size="12" :max-chips="3" :show-label="false" class="hotspot-chipstack" />
+            <ChipStack v-if="insideTotal(h.numbers)" :amount="insideTotal(h.numbers)" :size="14" :max-chips="3" :show-label="false" class="hotspot-chipstack" />
           </button>
           <button v-for="h in LINE_HOTSPOTS" :key="`li-${h.numbers.join('-')}`" type="button"
             class="hotspot hotspot-line" :class="{ 'is-occupied': insideTotal(h.numbers) > 0, 'fx-glow-win': isWinningSpot(h.numbers) }"
@@ -459,7 +558,7 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
             :disabled="sending || state.phase !== 'betting'"
             :aria-label="`라인 베팅 ${h.numbers.join('-')}`"
             @click="placeInside(h.numbers)">
-            <ChipStack v-if="insideTotal(h.numbers)" :amount="insideTotal(h.numbers)" :size="12" :max-chips="3" :show-label="false" class="hotspot-chipstack" />
+            <ChipStack v-if="insideTotal(h.numbers)" :amount="insideTotal(h.numbers)" :size="14" :max-chips="3" :show-label="false" class="hotspot-chipstack" />
           </button>
         </div>
       </div>
@@ -469,19 +568,23 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
           class="flex flex-col items-center gap-0.5 rounded bg-emerald-950 px-2 py-1.5 text-xs text-emerald-200 hover:bg-emerald-800 disabled:opacity-40"
           @click="placeBet({ type: b.type })">
           <span>{{ b.label }}</span>
-          <ChipStack v-if="myOutsideBetTotals[b.type]" :amount="myOutsideBetTotals[b.type]" :size="14" :max-chips="4" class="mt-0.5" />
+          <!-- 칩 자리를 항상 고정 높이로 확보해, 베팅 시 버튼이 커지며 아래 조작 영역이 밀리는 현상을 없앤다 -->
+          <div class="flex h-5 items-end justify-center">
+            <ChipStack v-if="myOutsideBetTotals[b.type]" :amount="myOutsideBetTotals[b.type]" :size="16" :max-chips="4" />
+          </div>
         </button>
       </div>
     </section>
 
     <!-- 조작 -->
-    <section class="rounded-2xl border border-emerald-800 bg-emerald-900/50 p-4">
-      <div class="flex flex-wrap items-end gap-3">
+    <section class="game-surface rounded-2xl border border-emerald-800 bg-emerald-900/50 p-4">
+      <div class="flex flex-wrap items-center gap-3">
         <ChipTray v-model="chipValue" :disabled="state.phase !== 'betting' || sending" />
-        <button v-if="state.phase === 'betting'" :disabled="!canRepeatLastBet || sending"
-          class="rounded-lg border border-amber-500/50 px-3 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-30"
-          :title="canRepeatLastBet ? `직전 베팅 재현 (총 ${lastRoundTotal.toLocaleString()}칩)` : '재현할 직전 베팅이 없거나 잔액이 부족합니다.'"
-          @click="repeatLastBet">↺ 직전 베팅</button>
+        <BetControls v-if="state.phase === 'betting'" :sending="sending"
+          :can-max="canBetMaxRou" :max-label="lastTarget ? '마지막 베팅 대상에 한도만큼 올인' : '먼저 베팅할 곳을 누르세요'"
+          :can-undo="myBets.length > 0" :can-clear="myBets.length > 0"
+          :can-repeat="canRepeatLastBet" :repeat-label="`직전 베팅 재현 (총 ${lastRoundTotal.toLocaleString()}칩)`"
+          @max="betMaxTarget" @undo="undoLastBet" @clear="clearMyBets" @repeat="repeatLastBet" />
         <span class="ml-auto text-xs text-emerald-400/80">번호·번호 사이(스플릿/스트리트/코너/라인)를 클릭하면 즉시 베팅됩니다</span>
       </div>
       <p v-if="error" class="mt-2 text-sm text-red-400">{{ error }}</p>
@@ -505,6 +608,11 @@ const PHASE_LABELS = { waiting: '대기 중', betting: '베팅하세요!', spinn
 </template>
 
 <style scoped>
+/* 그래픽(Pixi) 모드 휠 캔버스 프레임 */
+.pixi-rou-frame {
+  height: clamp(280px, 42vh, 400px);
+}
+
 .wheel-disc {
   --size: 260px;
   width: var(--size);

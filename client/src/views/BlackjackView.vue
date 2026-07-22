@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import CardImg from '../components/CardImg.vue'
 import FloatingText from '../components/FloatingText.vue'
@@ -8,12 +8,17 @@ import TableChat from '../components/TableChat.vue'
 import TableHud from '../components/TableHud.vue'
 import ChipTray from '../components/ChipTray.vue'
 import ChipStack from '../components/ChipStack.vue'
+import BetControls from '../components/BetControls.vue'
 import WinCascade from '../components/WinCascade.vue'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
 import { chipStyleFor } from '../lib/chips'
 import { cardRankSuit } from '../lib/cardText'
+import { nearDeadline, DEADLINE_GUARD_MESSAGE } from '../lib/betGuard'
+
+// PixiJS(WebGL) 렌더러 — 그래픽 모드를 켠 유저만 번들을 내려받도록 async import.
+const BlackjackPixi = defineAsyncComponent(() => import('../pixi/BlackjackPixi.vue'))
 
 const route = useRoute()
 const router = useRouter()
@@ -24,14 +29,18 @@ const game = useGameSocket('blackjack')
 const state = ref(null)
 const error = ref('')
 const sending = ref(false)
-const betAmount = ref(0) // 확정 전, 좌석에 쌓인 베팅액 — ChipStack이 액면 자동 병합해 시각화
 const chipValue = ref(100) // 활성 칩(현재 선택된 베팅 단위)
+// 그래픽(Pixi) 모드: ?pixi=1 또는 저장된 설정으로 켠다. DOM 렌더러와 병행하는 표현 계층 전환.
+const usePixi = ref(route.query.pixi === '1' || localStorage.getItem('pixi') === '1')
 const floating = ref(null)
 const cascade = ref(null)
 
 const mySeatIdx = computed(() => state.value?.seats.findIndex((s) => s?.userId === auth.user?.id) ?? -1)
 const mySeat = computed(() => (mySeatIdx.value >= 0 ? state.value.seats[mySeatIdx.value] : null))
 const isMyTurn = computed(() => state.value?.phase === 'acting' && state.value.currentSeat === mySeatIdx.value)
+// 라운드 사이(대기/베팅)이고 딜러 카드가 아직 없으면 슈에서 셔플 중 — 슈 그래픽이 직접 리플 셔플한다.
+const isShuffling = computed(() =>
+  !dealerView.value.cards.length && ['betting', 'waiting'].includes(state.value?.phase))
 const myHand = computed(() => (isMyTurn.value ? mySeat.value.hands[mySeat.value.activeHand] : null))
 // 내 이번 라운드 총 베팅액: 더블은 핸드당 베팅액 2배, 스플릿은 핸드 수만큼 합산 (딜링 전에는 seat.bet 그대로)
 const myBet = computed(() => {
@@ -252,54 +261,62 @@ function seatHandCaughtUp(seatIdx, handIdx) {
   return seatCards(seatIdx, handIdx).length === serverHand.cards.length
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// 카드 대각선 부채꼴 배치: 실제 블랙잭처럼 카드가 오른쪽 아래로 겹쳐 쌓이도록,
-// 각 카드에 인덱스 기반 겹침(가로: 음수 margin) + 대각(세로 translate) + 살짝 회전을 준다.
-// ─────────────────────────────────────────────────────────────────────────
-function fanCardStyle(i, n, overlapPx = 22, dy = 7, rotDeg = 5) {
-  const mid = (n - 1) / 2
-  return {
-    position: 'relative',
-    zIndex: i,
-    marginLeft: i === 0 ? '0px' : `-${overlapPx}px`,
-    transform: `translateY(${i * dy}px) rotate(${((i - mid) * rotDeg).toFixed(1)}deg)`,
-  }
-}
-function fanPadBottom(n, dy = 7) {
-  return n > 1 ? `${(n - 1) * dy + 8}px` : '2px'
-}
 // 카드 한 장의 텍스트 표기용 클래스(빨강 수트만 색을 다르게)
 function suitClass(code) {
   return cardRankSuit(code).isRed ? 'text-red-400' : 'text-slate-100'
 }
 function cardText(code) {
+  // 숨김 카드는 '?' — 유니코드 카드뒷면 글리프(🂠)는 Windows 폰트에 없어 깨져 보인다
   const { rank, symbol, hidden } = cardRankSuit(code)
-  return hidden ? '🂠' : `${rank}${symbol}`
+  return hidden ? '?' : `${rank}${symbol}`
+}
+
+// 그래픽 모드 전환. Pixi 모드에서는 씬이 자체 reveal 큐를 돌리므로 DOM 표시 계층을 정지하고,
+// DOM 복귀 시엔 현재 스냅샷으로 즉시 재동기화한다(카드 사운드 이중 재생 방지).
+function togglePixi() {
+  usePixi.value = !usePixi.value
+  try {
+    localStorage.setItem('pixi', usePixi.value ? '1' : '0')
+  } catch {
+    // 저장 실패는 무시(사생활 모드 등)
+  }
+  if (usePixi.value) {
+    if (revealTimer) {
+      clearTimeout(revealTimer)
+      revealTimer = null
+    }
+    revealQueue = []
+  } else if (state.value) {
+    seedDisplay(state.value)
+  }
 }
 
 onMounted(async () => {
   try {
     state.value = await game.connect(route.params.tableId)
-    seedDisplay(state.value)
+    if (!usePixi.value) seedDisplay(state.value)
   } catch {
     return
   }
   game.onState((s) => {
-    // 진행 레이어를 최신 스냅샷에 수렴시킨다(항상 state.value=이전 스냅샷 기준으로 diff)
-    if (s.dealer.cards.length === 0) {
-      hardResetDisplay(s)
-    } else if ((state.value?.dealer.cards.length ?? 0) === 0) {
-      // 방금 새 라운드가 딜링됨 — 카지노 순서로 스태거 딜
-      const steps = buildFreshDealSteps(s)
-      s.seats.forEach((seat, i) => {
-        if (seat && seat.hands.length) planned.seats[i] = { handsLen: [seat.hands[0].cards.length] }
-        else resetPlannedSeat(i)
-      })
-      planned.dealerLen = s.dealer.cards.length
-      planned.dealerFlipQueued = !s.dealer.hidden
-      enqueue(steps)
-    } else {
-      diffAndEnqueue(s)
+    // 진행 레이어를 최신 스냅샷에 수렴시킨다(항상 state.value=이전 스냅샷 기준으로 diff).
+    // Pixi 모드에서는 씬이 동일한 큐 로직을 수행하므로 DOM 표시 계층은 건너뛴다.
+    if (!usePixi.value) {
+      if (s.dealer.cards.length === 0) {
+        hardResetDisplay(s)
+      } else if ((state.value?.dealer.cards.length ?? 0) === 0) {
+        // 방금 새 라운드가 딜링됨 — 카지노 순서로 스태거 딜
+        const steps = buildFreshDealSteps(s)
+        s.seats.forEach((seat, i) => {
+          if (seat && seat.hands.length) planned.seats[i] = { handsLen: [seat.hands[0].cards.length] }
+          else resetPlannedSeat(i)
+        })
+        planned.dealerLen = s.dealer.cards.length
+        planned.dealerFlipQueued = !s.dealer.hidden
+        enqueue(steps)
+      } else {
+        diffAndEnqueue(s)
+      }
     }
 
     if (s.phase === 'result' && state.value?.phase !== 'result') {
@@ -326,6 +343,8 @@ onMounted(async () => {
     }
     // 새 베팅 페이즈가 시작되는 시점에, 직전 라운드 내 베팅액을 "직전 베팅"으로 저장
     if (s.phase === 'betting' && state.value?.phase !== 'betting') {
+      sfx.shuffle() // 셔플 연출(빈 딜러 영역의 리플 애니메이션)과 함께 촤라라락
+
       const prevMine = state.value?.seats?.find((seat) => seat?.userId === auth.user?.id)
       if (prevMine?.bet > 0) {
         lastRoundBet.value = prevMine.bet
@@ -367,31 +386,87 @@ async function leaveSeat() {
   sfx.click()
   await act('seat:leave')
 }
-function addChip(v) {
-  const { minBet, maxBet } = state.value.rules
-  const prev = betAmount.value
-  let next = Math.min(maxBet, prev + v)
-  if (next < minBet) next = minBet
-  if (next === prev) return // 이미 최대 베팅액
-  sfx.chip()
-  // 이번 칩 추가로 누적 베팅액이 상위 액면으로 자동 병합되는 경계를 넘으면 겹클링을 더한다.
-  if (chipStyleFor(prev) !== chipStyleFor(next)) sfx.chipStack()
-  betAmount.value = next
+// 이미 서버에 얹혀 있는 내 베팅액(권위 있는 값)과, 여기에 더 얹을 수 있는 여유분.
+// 여유분 = (테이블 최대 베팅 - 현재 내 베팅)과 잔고 중 작은 값.
+const myBetPlaced = computed(() => mySeat.value?.bet ?? 0)
+const remainingCap = computed(() =>
+  Math.max(0, Math.min((state.value?.rules.maxBet ?? 0) - myBetPlaced.value, auth.user?.balance ?? 0)))
+const canBetMax = computed(() => state.value?.phase === 'betting' && remainingCap.value > 0)
+
+// 즉시 누적 베팅: 칩을 얹을 때마다 서버에 바로 반영한다. 확정 버튼이 없고, 베팅 시간이 끝나면
+// 그 시점에 얹혀 있는 칩(seat.bet)으로 서버가 자동으로 라운드를 시작한다(closeBetting).
+// 룰렛/바카라와 동일한 즉시 베팅 모델 — 확정 타이밍 경합이나 백그라운드 탭 문제가 없다.
+async function sendBet(amount) {
+  if (sending.value) return { error: undefined }
+  // 마감 직전 보호: 서버 도착 시점 레이스로 조용히 거부/의도치 않은 접수가 되는 것을 예방
+  if (nearDeadline(state.value)) {
+    error.value = DEADLINE_GUARD_MESSAGE
+    return { error: error.value }
+  }
+  sending.value = true
+  error.value = ''
+  try {
+    const res = await game.emitAck('bet:place', { amount })
+    if (res.error) error.value = res.error
+    return res
+  } finally {
+    sending.value = false
+  }
 }
-function clearBet() {
-  betAmount.value = 0
+async function addChip() {
+  if (state.value?.phase !== 'betting') return
+  const cap = remainingCap.value
+  if (cap <= 0) {
+    error.value = '더 얹을 수 없습니다 (테이블 한도 또는 잔고 초과).'
+    return
+  }
+  const amount = Math.min(chipValue.value, cap)
+  const before = myBetPlaced.value
+  const res = await sendBet(amount)
+  if (res?.ok) {
+    sfx.chip()
+    // 누적 베팅액이 상위 액면으로 자동 병합되는 경계를 넘으면 겹클링을 더한다.
+    if (chipStyleFor(before) !== chipStyleFor(before + amount)) sfx.chipStack()
+  }
 }
-async function confirmBet() {
-  const res = await act('bet:place', { amount: betAmount.value })
-  if (res.ok) {
-    betAmount.value = 0
+// '최대' — 여유분 전부를 한 번에 얹는다.
+async function betMax() {
+  if (state.value?.phase !== 'betting' || remainingCap.value <= 0) return
+  const res = await sendBet(remainingCap.value)
+  if (res?.ok) sfx.chipStack()
+}
+// 마지막으로 얹은 칩 1개만 되돌린다(서버가 즉시 환불).
+async function undoChip() {
+  if (state.value?.phase !== 'betting' || myBetPlaced.value === 0 || sending.value) return
+  sending.value = true
+  error.value = ''
+  try {
+    const res = await game.emitAck('bet:undo')
+    if (res.error) error.value = res.error
+    else sfx.chip()
+  } finally {
+    sending.value = false
+  }
+}
+// 내 베팅 전체 취소(서버가 총액 환불).
+async function clearBet() {
+  if (state.value?.phase !== 'betting' || myBetPlaced.value === 0 || sending.value) return
+  sending.value = true
+  error.value = ''
+  try {
+    const res = await game.emitAck('bet:clear')
+    if (res.error) error.value = res.error
+    else sfx.chipStack()
+  } finally {
+    sending.value = false
   }
 }
 async function repeatLastBet() {
   if (!canRepeatLastBet.value || sending.value) return
   const { minBet, maxBet } = state.value.rules
-  betAmount.value = Math.min(maxBet, Math.max(minBet, lastRoundBet.value))
-  await confirmBet()
+  const amount = Math.min(maxBet, Math.max(minBet, lastRoundBet.value))
+  const res = await sendBet(amount)
+  if (res?.ok) sfx.chipStack()
 }
 function doAction(move) {
   sfx.click()
@@ -408,6 +483,9 @@ function doAction(move) {
       <h1 class="text-lg font-bold text-amber-400">🃏 {{ state.name }}</h1>
       <span class="rounded-full bg-emerald-800 px-2 py-0.5 text-xs text-emerald-200">{{ PHASE_LABELS[state.phase] }}</span>
       <span class="text-xs text-emerald-400">베팅 {{ state.rules.minBet.toLocaleString() }}~{{ state.rules.maxBet.toLocaleString() }}칩</span>
+      <button class="rounded-full border border-amber-500/40 px-2.5 py-0.5 text-xs font-bold text-amber-300 hover:bg-amber-500/10"
+        :title="usePixi ? '기존 화면으로 전환' : 'PixiJS(WebGL) 렌더링으로 전환'" @click="togglePixi">
+        {{ usePixi ? '🖼 기본 화면' : '✨ 그래픽 화면(베타)' }}</button>
       <button class="ml-auto text-sm text-emerald-300 hover:text-amber-300" @click="router.push('/')">로비로</button>
     </div>
 
@@ -416,13 +494,41 @@ function doAction(move) {
 
     <div class="relative"><FloatingText ref="floating" /></div>
 
-    <!-- 테이블 펠트: 딜러 아치 + 좌석 반원 -->
-    <div class="felt-table relative overflow-hidden rounded-[2rem] border-4 border-amber-600/40 p-3 shadow-2xl sm:p-5">
+    <!-- 그래픽(Pixi) 모드: 캔버스가 펠트/카드/칩을 그리고, 보조 텍스트·버튼은 DOM이 담당 -->
+    <div v-if="usePixi" class="space-y-2">
+      <div class="pixi-bj-frame game-surface relative overflow-hidden rounded-[2rem] border-4 border-amber-600/40 shadow-2xl">
+        <BlackjackPixi :get-state="() => state" :subscribe="game.onState" :my-user-id="auth.user?.id" :on-sit="sit" />
+      </div>
+      <!-- 접근성/보조 표기: 캔버스와 동일한 서버 데이터의 문자 표기(스크린리더·그래픽 미표시 대비) -->
+      <p v-if="state.dealer.cards.length" class="text-center font-mono text-sm tracking-wide" aria-live="polite">
+        <span class="text-emerald-300">딜러</span>
+        <span v-for="(card, i) in state.dealer.cards" :key="'pd' + i" class="ml-1 font-bold" :class="suitClass(card.code)">{{ cardText(card.code) }}</span>
+        <b v-if="state.dealer.total" class="ml-1 text-amber-300">= {{ state.dealer.total }}</b>
+      </p>
+      <p v-if="mySeat && mySeat.hands.length" class="text-center font-mono text-sm" aria-live="polite">
+        <span class="text-emerald-300">내 손패</span>
+        <template v-for="(hand, hi) in mySeat.hands" :key="'ph' + hi">
+          <span v-for="(card, ci) in hand.cards" :key="'phc' + hi + '-' + ci" class="ml-1 font-bold" :class="suitClass(card.code)">{{ cardText(card.code) }}</span>
+          <b class="ml-1 text-amber-300">{{ hand.total }}</b>
+        </template>
+      </p>
+      <p v-if="mySeat && !mySeat.bet" class="text-center">
+        <button class="text-xs text-red-400 hover:underline" @click="leaveSeat">자리 뜨기</button>
+      </p>
+    </div>
+
+    <!-- 테이블 펠트: 딜러 아치 + 좌석 반원 (기본 DOM 렌더러) -->
+    <div v-else class="felt-table game-surface relative overflow-hidden rounded-[2rem] border-4 border-amber-600/40 p-3 shadow-2xl sm:p-5">
       <!-- 딜러 아치 영역 -->
       <section class="dealer-arc relative px-4 pb-5 pt-6 text-center">
-        <!-- 슈(카드 뭉치) -->
-        <div class="absolute right-3 top-2 flex flex-col items-center gap-1 opacity-90 sm:right-6" aria-hidden="true">
-          <div class="shoe-graphic" />
+        <!-- 슈(카드 딜링 슈): 라운드 사이엔 이 슈 자체에서 카드가 촤라라락 리플 셔플된다.
+             셔플 효과와 슈가 따로 떠 있지 않고, 실제 슈에서 섞여 딜된다. -->
+        <div class="shoe-zone absolute right-2 top-1 flex flex-col items-center gap-1 sm:right-5" aria-hidden="true">
+          <div class="shoe-graphic" :class="{ 'shoe-shuffling': isShuffling }">
+            <template v-if="isShuffling">
+              <span v-for="i in 5" :key="i" class="shoe-riffle-card" :style="{ '--si': i - 1 }" />
+            </template>
+          </div>
           <span class="text-[8px] font-bold tracking-widest text-emerald-400/70">SHOE</span>
         </div>
 
@@ -435,17 +541,27 @@ function doAction(move) {
         <p class="mb-2 text-[9px] tracking-wide text-emerald-400/60">딜러는 17에서 반드시 멈춘다</p>
 
         <p class="mb-1 text-xs text-emerald-300">딜러 <b v-if="dealerView.total" class="text-amber-300">{{ dealerView.total }}</b></p>
-        <div class="flex min-h-[64px] flex-nowrap items-center justify-center sm:min-h-[88px]"
-          :style="{ paddingBottom: fanPadBottom(dealerView.cards.length, 8) }">
-          <span v-for="(card, i) in dealerView.cards" :key="i" :style="fanCardStyle(i, dealerView.cards.length, 26, 8, 5)">
-            <CardImg :code="card.code" deal-animate class="!w-14 sm:!w-20" />
-          </span>
-          <p v-if="dealerView.cards.length === 0" class="text-sm text-emerald-500">대기 중</p>
+        <div class="flex min-h-[64px] items-start justify-center sm:min-h-[88px]">
+          <!-- 떠나는 쪽이 슈 방향으로 날아간 뒤 다음 상태가 나타난다:
+               셔플이 끝나면 셔플 덱이 슈로 돌아가고, 라운드가 끝나면 쓴 카드들이 슈(디스카드) 쪽으로 회수된다 -->
+          <Transition name="to-shoe" mode="out-in">
+            <div v-if="dealerView.cards.length" key="cards" class="card-cascade cascade-dealer" :style="{ '--n': dealerView.cards.length }">
+              <span v-for="(card, i) in dealerView.cards" :key="i" class="cascade-slot" :style="{ '--i': i }">
+                <CardImg :code="card.code" deal-animate class="!w-14 sm:!w-20" />
+              </span>
+            </div>
+            <!-- 카드는 우상단 실제 슈에서 섞이므로, 중앙엔 상태 문구만 둔다 -->
+            <p v-else key="wait" class="self-center text-sm text-emerald-500">
+              {{ isShuffling ? '🔀 슈에서 카드를 섞는 중…' : '대기 중' }}</p>
+          </Transition>
         </div>
-        <!-- 딜러 카드 텍스트 표기: 그래픽이 잘 안 보일 때를 대비한 보조 표기(같은 서버 데이터에서 파생) -->
-        <p v-if="dealerView.cards.length" class="mt-1 font-mono text-sm tracking-wide">
-          <span v-for="(card, i) in dealerView.cards" :key="'dt' + i" class="mr-1 font-bold" :class="suitClass(card.code)">{{ cardText(card.code) }}</span>
-          <span v-if="dealerView.total" class="ml-1 font-bold text-amber-300">= {{ dealerView.total }}</span>
+        <!-- 딜러 카드 텍스트 표기: 그래픽이 잘 안 보일 때를 대비한 보조 표기(같은 서버 데이터에서 파생).
+             빈 상태에도 같은 높이를 차지해 아래 좌석 영역이 위아래로 튀지 않는다. -->
+        <p class="mt-1 min-h-[20px] font-mono text-sm tracking-wide">
+          <template v-if="dealerView.cards.length">
+            <span v-for="(card, i) in dealerView.cards" :key="'dt' + i" class="mr-1 font-bold" :class="suitClass(card.code)">{{ cardText(card.code) }}</span>
+            <span v-if="dealerView.total" class="ml-1 font-bold text-amber-300">= {{ dealerView.total }}</span>
+          </template>
         </p>
       </section>
 
@@ -462,15 +578,14 @@ function doAction(move) {
               <p class="truncate text-xs font-bold" :class="seat.userId === auth.user?.id ? 'text-amber-300' : 'text-emerald-200'">
                 {{ seat.nickname }}</p>
               <div v-if="seat.bet" class="flex flex-col items-center gap-0.5">
-                <ChipStack :amount="seat.bet" :size="16" :max-chips="4" :show-label="false" />
+                <ChipStack :amount="seat.bet" :size="22" :max-chips="4" :show-label="false" />
                 <span class="text-xs text-emerald-400">{{ seat.bet.toLocaleString() }}칩</span>
               </div>
               <div v-for="(hand, hi) in seat.hands" :key="hi" class="mt-1"
                 :class="seat.activeHand === hi && state.currentSeat === i ? 'ring-1 ring-amber-400 rounded' : ''">
-                <div class="flex flex-nowrap justify-center"
-                  :style="{ paddingBottom: fanPadBottom(seatCards(i, hi).length, seat.userId === auth.user?.id ? 8 : 5) }">
-                  <span v-for="(card, ci) in seatCards(i, hi)" :key="ci"
-                    :style="fanCardStyle(ci, seatCards(i, hi).length, seat.userId === auth.user?.id ? 20 : 14, seat.userId === auth.user?.id ? 8 : 5, 5)">
+                <div class="card-cascade" :class="seat.userId === auth.user?.id ? 'cascade-mine' : 'cascade-other'"
+                  :style="{ '--n': seatCards(i, hi).length }">
+                  <span v-for="(card, ci) in seatCards(i, hi)" :key="ci" class="cascade-slot" :style="{ '--i': ci }">
                     <CardImg :code="card.code" deal-animate
                       :class="seat.userId === auth.user?.id ? '!w-11 sm:!w-16' : '!w-8 sm:!w-10'" />
                   </span>
@@ -488,8 +603,10 @@ function doAction(move) {
                   <template v-if="isWinOutcome(hand.result.outcome)"> +{{ hand.result.payout.toLocaleString() }}</template>
                 </p>
               </div>
-              <button v-if="seat.userId === auth.user?.id" class="mt-1 text-xs text-red-400 hover:underline" @click="leaveSeat">
+              <!-- 칩을 올려 라운드에 참여하면 떠날 수 없다(자동확정 모델). 베팅 전에만 이탈 가능. -->
+              <button v-if="seat.userId === auth.user?.id && !seat.bet" class="mt-1 text-xs text-red-400 hover:underline" @click="leaveSeat">
                 떠나기</button>
+              <span v-else-if="seat.userId === auth.user?.id" class="mt-1 block text-[10px] text-emerald-500/70">🔒 라운드 참여 중</span>
             </template>
             <button v-else class="seat-empty w-full py-4 text-xs text-emerald-500 hover:text-amber-300" @click="sit(i)">
               + 앉기</button>
@@ -498,26 +615,25 @@ function doAction(move) {
       </section>
     </div>
 
-    <!-- 조작 -->
-    <section v-if="mySeat" class="rounded-2xl border border-emerald-800 bg-emerald-900/50 p-4">
-      <div v-if="state.phase === 'betting' && mySeat.bet === 0" class="flex flex-col items-center gap-3">
+    <!-- 조작: 베팅 UI↔액션 버튼이 바뀌어도 섹션 높이가 변하지 않도록 고정(내용은 세로 중앙) -->
+    <section v-if="mySeat" class="game-surface flex min-h-[248px] flex-col justify-center rounded-2xl border border-emerald-800 bg-emerald-900/50 p-4">
+      <div v-if="state.phase === 'betting'" class="flex flex-col items-center gap-3">
         <ChipTray v-model="chipValue" :disabled="sending" />
-        <button type="button" :disabled="sending"
+        <button type="button" :disabled="sending || (remainingCap === 0 && myBetPlaced === 0)"
           class="bet-spot flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-amber-500/50 text-center hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
-          title="눌러서 활성 칩을 베팅에 추가" @click="addChip(chipValue)">
-          <span v-if="betAmount === 0" class="px-1 text-[10px] leading-tight text-emerald-400">눌러서<br>베팅</span>
-          <ChipStack v-else :amount="betAmount" :size="26" :max-chips="6" :show-label="false" />
+          title="눌러서 활성 칩을 베팅에 올려놓기" @click="addChip">
+          <span v-if="myBetPlaced === 0" class="px-1 text-[10px] leading-tight text-emerald-400">눌러서<br>베팅</span>
+          <ChipStack v-else :amount="myBetPlaced" :size="34" :max-chips="6" :show-label="false" />
         </button>
-        <div class="flex flex-wrap items-center justify-center gap-2">
-          <span class="font-bold tabular-nums text-amber-300">{{ betAmount.toLocaleString() }}칩</span>
-          <button class="rounded-lg px-2 py-1 text-xs text-emerald-400 hover:text-red-400" @click="clearBet">지우기</button>
-          <button v-if="canRepeatLastBet" :disabled="sending"
-            class="rounded-lg border border-amber-500/50 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/10 disabled:opacity-30"
-            :title="`직전 베팅 재현 (${lastRoundBet.toLocaleString()}칩)`" @click="repeatLastBet">↺ 직전 베팅</button>
-          <button :disabled="betAmount === 0 || sending"
-            class="rounded-lg bg-amber-500 px-4 py-2 text-sm font-black text-emerald-950 hover:bg-amber-400 disabled:opacity-40"
-            @click="confirmBet">베팅 확정</button>
-        </div>
+        <span class="font-bold tabular-nums text-amber-300">{{ myBetPlaced.toLocaleString() }}칩</span>
+        <BetControls :sending="sending" :can-max="canBetMax"
+          :max-label="`여유분 전부 베팅 (+${remainingCap.toLocaleString()}칩)`"
+          :can-undo="myBetPlaced > 0" :can-clear="myBetPlaced > 0"
+          :can-repeat="canRepeatLastBet" :repeat-label="`직전 베팅 재현 (${lastRoundBet.toLocaleString()}칩)`"
+          @max="betMax" @undo="undoChip" @clear="clearBet" @repeat="repeatLastBet" />
+        <p class="text-center text-[11px] leading-snug text-emerald-400/70">
+          🕒 시간이 끝나면 <b class="text-amber-300">올려둔 칩으로 자동 시작</b>됩니다 —
+          베팅하지 않으면 <b class="text-red-300">자리가 비워져요</b>.</p>
       </div>
       <div v-else-if="isMyTurn && myHand" class="flex flex-wrap justify-center gap-2">
         <button :disabled="sending" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold hover:bg-emerald-500 disabled:opacity-40" @click="doAction('hit')">히트</button>
@@ -530,7 +646,8 @@ function doAction(move) {
           :disabled="sending" class="rounded-lg bg-red-700 px-4 py-2 text-sm font-bold hover:bg-red-600 disabled:opacity-40" @click="doAction('surrender')">서렌더</button>
       </div>
       <p v-else class="text-center text-sm text-emerald-400">{{ PHASE_LABELS[state.phase] }}…</p>
-      <p v-if="error" class="mt-2 text-center text-sm text-red-400">{{ error }}</p>
+      <!-- 에러 슬롯: 항상 같은 높이를 차지해 에러 표시/해제 시에도 흔들리지 않는다 -->
+      <p class="mt-2 min-h-[20px] text-center text-sm text-red-400">{{ error }}</p>
     </section>
     <p v-else class="text-center text-sm text-emerald-400">빈 좌석을 눌러 참가하세요.</p>
     </div>
@@ -546,6 +663,47 @@ function doAction(move) {
 </template>
 
 <style scoped>
+/* 카드 캐스케이드: 전문 딜러가 놓듯 회전 없이 오른쪽 아래로 일정한 계단식 겹침.
+   각 카드 위치는 자신의 인덱스(--i)에만 의존하므로 새 카드가 와도 기존 카드는 움직이지 않는다.
+   --card-w는 CardImg에 주는 테일윈드 폭(!w-*)과 반드시 일치해야 겹침 폭이 정확하다. */
+.card-cascade {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-bottom: calc((var(--n, 1) - 1) * var(--dy));
+}
+.cascade-slot {
+  position: relative;
+  z-index: var(--i, 0);
+  transform: translateY(calc(var(--i, 0) * var(--dy)));
+}
+.cascade-slot + .cascade-slot {
+  margin-left: calc(var(--reveal) - var(--card-w));
+}
+/* 겹친 카드의 왼쪽 경계가 또렷이 읽히도록 위에 얹힌 카드에만 경계 그림자 */
+.cascade-slot + .cascade-slot :deep(.card-face) {
+  box-shadow: -3px 2px 6px rgba(0, 0, 0, 0.45);
+}
+/* 딜러는 실제 딜러처럼 겹침 없이 옆으로 나란히: --reveal을 카드 폭보다 크게 주면 그 차이가 간격이 된다.
+   플레이어 핸드는 겹침(--reveal < --card-w)은 유지하되 아래로 내려가지 않고(--dy: 0) 옆으로만 쌓인다. */
+.cascade-dealer { --card-w: 56px; --reveal: 60px; --dy: 0px; }
+.cascade-mine { --card-w: 44px; --reveal: 18px; --dy: 0px; }
+.cascade-other { --card-w: 32px; --reveal: 13px; --dy: 0px; }
+@media (min-width: 640px) {
+  .cascade-dealer { --card-w: 80px; --reveal: 86px; --dy: 0px; }
+  .cascade-mine { --card-w: 64px; --reveal: 25px; --dy: 0px; }
+  .cascade-other { --card-w: 40px; --reveal: 15px; --dy: 0px; }
+}
+/* 나란히 놓인 딜러 카드에는 겹침 경계 그림자가 필요 없다 */
+.cascade-dealer .cascade-slot + .cascade-slot :deep(.card-face) {
+  box-shadow: none;
+}
+
+/* 그래픽(Pixi) 모드 캔버스 프레임 — 좌석 아치까지 담기는 고정 높이 */
+.pixi-bj-frame {
+  height: clamp(420px, 58vh, 560px);
+}
+
 /* 펠트 테이블 배경 — 이미지 없이 그라디언트로 카지노 그린 펠트 질감을 낸다 */
 .felt-table {
   background: radial-gradient(ellipse at 50% -8%, #0d5c3f 0%, #07422c 55%, #04241a 100%);
@@ -559,16 +717,75 @@ function doAction(move) {
   border-bottom: 2px solid rgba(245, 158, 11, 0.25);
 }
 
-/* 슈(카드 딜링 슈) — 겹쳐진 카드 뭉치를 CSS만으로 표현 */
+/* 슈(카드 딜링 슈) — 겹쳐진 카드 뭉치. 셔플 중엔 이 슈 자체에서 카드가 리플되어 나온다.
+   셔플 효과와 슈가 따로 떠 있지 않고, 실제 슈에서 섞여 딜된다. */
 .shoe-graphic {
-  width: 22px;
-  height: 30px;
+  position: relative;
+  width: 26px;
+  height: 34px;
   border-radius: 3px;
   background: linear-gradient(160deg, #7f1d1d, #450a0a);
   border: 2px solid rgba(255, 255, 255, 0.75);
   box-shadow:
     -4px 4px 0 -1px rgba(127, 29, 29, 0.55),
     -8px 8px 0 -2px rgba(127, 29, 29, 0.35);
+}
+.shoe-graphic.shoe-shuffling {
+  animation: shoe-jiggle 0.28s ease-in-out infinite;
+}
+@keyframes shoe-jiggle {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  50% { transform: translateX(-1.5px) rotate(-2deg); }
+}
+/* 슈에서 카드가 촤라라락 리플: 카드 뒷면이 슈(0,0)를 기준으로 위-왼쪽으로 아치를 그리며
+   튀어나왔다 되돌아가는 무한 루프. --si 스태거로 연속 리듬을 만든다. */
+.shoe-riffle-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 22px;
+  height: 30px;
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.06) 0 4px, transparent 4px 8px),
+    linear-gradient(160deg, #7f1d1d, #450a0a);
+  border: 1.5px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  transform-origin: bottom center;
+  animation: shoe-riffle 1.05s cubic-bezier(0.45, 0.05, 0.35, 1) infinite;
+  animation-delay: calc(var(--si) * -0.2s);
+}
+@keyframes shoe-riffle {
+  0% { transform: translate(0, 0) rotate(0) scale(0.9); opacity: 0; }
+  18% { opacity: 1; }
+  50% { transform: translate(-20px, -18px) rotate(-16deg) scale(1); opacity: 1; }
+  82% { opacity: 1; }
+  100% { transform: translate(0, 0) rotate(0) scale(0.9); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shoe-graphic.shoe-shuffling { animation: none; }
+  .shoe-riffle-card { animation: none; opacity: 0; }
+}
+
+/* 슈 왕복 연출: 딜러 영역 중앙과 우상단 슈 사이를 오간다.
+   - 떠날 때(셔플 종료→딜 시작, 라운드 종료→카드 회수): 슈 쪽으로 날아가며 축소
+   - 들어올 때(셔플 시작): 같은 궤적을 역재생해 슈에서 덱을 꺼내오는 느낌을 준다
+   딜러 카드(card-cascade)의 진입은 카드별 fx-shoe-travel이 이미 담당하므로 제외한다. */
+.to-shoe-leave-active {
+  animation: fx-to-shoe 0.45s cubic-bezier(0.4, 0, 0.8, 0.4) both;
+}
+.to-shoe-enter-active:not(.card-cascade) {
+  animation: fx-to-shoe 0.4s cubic-bezier(0.2, 0.6, 0.4, 1) both reverse;
+}
+@keyframes fx-to-shoe {
+  to {
+    transform: translate(clamp(140px, 24vw, 330px), -74px) scale(0.35) rotate(8deg);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .to-shoe-leave-active,
+  .to-shoe-enter-active:not(.card-cascade) { animation: none; }
 }
 
 /* 좌석 반원(아치) 배치: 가장자리 좌석일수록 위로, 가운데 좌석일수록 아래(관전자 쪽)로 두어
@@ -584,6 +801,26 @@ function doAction(move) {
 .bj-seat {
   flex: 0 0 auto;
   width: clamp(82px, 12vw, 112px);
+}
+/* 좌석 카드 높이 고정: 착석/베팅/카드/결과가 생겨도 좌석 크기가 변하지 않는다(레이아웃 안정).
+   내용은 위에서부터 채우고, 빈 좌석 버튼은 세로 중앙에 둔다. */
+.bj-seat .seat-card {
+  min-height: 168px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+.bj-seat .seat-card > * {
+  width: 100%;
+}
+.bj-seat .seat-empty {
+  margin: auto 0;
+}
+@media (min-width: 640px) {
+  .bj-seat .seat-card {
+    min-height: 204px;
+  }
 }
 .bj-seat:nth-child(1),
 .bj-seat:nth-child(7) {

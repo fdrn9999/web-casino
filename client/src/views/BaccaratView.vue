@@ -1,19 +1,25 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import CardImg from '../components/CardImg.vue'
+
+// PixiJS(WebGL) 렌더러 — 그래픽 모드를 켠 유저만 번들을 내려받도록 async import.
+const BaccaratPixi = defineAsyncComponent(() => import('../pixi/BaccaratPixi.vue'))
+import BaccaratRoads from '../components/BaccaratRoads.vue'
 import FloatingText from '../components/FloatingText.vue'
 import PhaseTimer from '../components/PhaseTimer.vue'
 import TableChat from '../components/TableChat.vue'
 import TableHud from '../components/TableHud.vue'
 import ChipTray from '../components/ChipTray.vue'
 import ChipStack from '../components/ChipStack.vue'
+import BetControls from '../components/BetControls.vue'
 import WinCascade from '../components/WinCascade.vue'
 import { useGameSocket } from '../composables/useGameSocket'
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
 import { chipStyleFor } from '../lib/chips'
 import { cardRankSuit } from '../lib/cardText'
+import { nearDeadline, DEADLINE_GUARD_MESSAGE } from '../lib/betGuard'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,6 +33,16 @@ const sending = ref(false)
 const chipValue = ref(100) // 활성 칩(현재 선택된 베팅 단위)
 const floating = ref(null)
 const cascade = ref(null)
+// 그래픽(Pixi) 모드 — 전 게임 공통 토글(localStorage 'pixi')
+const usePixi = ref(route.query.pixi === '1' || localStorage.getItem('pixi') === '1')
+function togglePixi() {
+  usePixi.value = !usePixi.value
+  try {
+    localStorage.setItem('pixi', usePixi.value ? '1' : '0')
+  } catch {
+    // 저장 실패는 무시(사생활 모드 등)
+  }
+}
 
 const KIND_BUTTONS = computed(() => [
   { kind: 'ppair', label: 'P 페어', pay: `${state.value?.rules.pairPayout}:1`, cls: 'bg-sky-900' },
@@ -166,8 +182,9 @@ function suitClass(code) {
   return cardRankSuit(code).isRed ? 'text-red-300' : 'text-slate-100'
 }
 function cardText(code) {
+  // 숨김 카드는 '?' — 유니코드 카드뒷면 글리프(🂠)는 Windows 폰트에 없어 깨져 보인다
   const { rank, symbol, hidden } = cardRankSuit(code)
-  return hidden ? '🂠' : `${rank}${symbol}`
+  return hidden ? '?' : `${rank}${symbol}`
 }
 
 onMounted(async () => {
@@ -220,13 +237,39 @@ onUnmounted(() => {
   revealQueue = []
 })
 
+const lastKind = ref(null) // 마지막으로 베팅한 곳 — '최대(올인)' 대상
+// 최대 가능 여부: 마지막 베팅 대상에 여유분(테이블 한도·잔고 중 작은 값)이 남아 있으면 활성.
+const canBetMaxBac = computed(() => {
+  if (state.value?.phase !== 'betting' || !lastKind.value) return false
+  const cap = Math.min((state.value.rules.maxBet ?? 0) - (myBetByKind.value[lastKind.value] ?? 0), auth.user?.balance ?? 0)
+  return cap > 0
+})
+
 async function bet(kind, amountOverride) {
-  // 라운드트립 중 중복 클릭 방지 (서버도 중복은 거부하지만 불필요한 요청/에러 노이즈를 줄임)
+  // 라운드트립 중 중복 클릭 방지(요청이 아직 진행 중일 때만 막음).
   if (sending.value) return
+  // 마감 직전 보호: 도착 시점 레이스로 조용히 거부/의도치 않은 접수가 되는 것을 예방
+  if (nearDeadline(state.value)) {
+    error.value = DEADLINE_GUARD_MESSAGE
+    return
+  }
+  const { minBet, maxBet } = state.value.rules
+  const balance = auth.user?.balance ?? 0
+  const prevTotal = myBetByKind.value[kind] ?? 0
+  // 칩을 잔고·테이블 한도로 자동 클램프 — 큰 칩을 눌러도 여유분까지만 베팅(올인 편의, 전 게임 공통).
+  const cap = Math.min(maxBet - prevTotal, balance)
+  let amt = Math.min(amountOverride ?? chipValue.value, cap)
+  if (amt <= 0) {
+    error.value = '더 얹을 수 없습니다 (테이블 한도 또는 잔고 초과).'
+    return
+  }
+  // 최초 베팅은 minBet 이상이어야 한다 — 여유가 있으면 minBet까지 끌어올린다.
+  if (prevTotal === 0 && amt < minBet) {
+    if (cap >= minBet) amt = minBet
+    else { error.value = `최소 베팅(${minBet.toLocaleString()}칩)에 미치지 못합니다.`; return }
+  }
   sending.value = true
   error.value = ''
-  const amt = amountOverride ?? chipValue.value
-  const prevTotal = myBetByKind.value[kind] ?? 0
   sfx.chip()
   if (chipStyleFor(prevTotal) !== chipStyleFor(prevTotal + amt)) sfx.chipStack()
   try {
@@ -235,10 +278,27 @@ async function bet(kind, amountOverride) {
       error.value = res.error
     } else {
       roundBets.value = [...roundBets.value, { kind, amount: amt }]
+      lastKind.value = kind
     }
   } finally {
     sending.value = false
   }
+}
+
+// 최대(올인): 마지막으로 베팅한 곳에 여유분 전부를 얹는다(전 게임 공통 편의).
+async function betMaxKind() {
+  if (state.value?.phase !== 'betting' || sending.value) return
+  const kind = lastKind.value
+  if (!kind) {
+    error.value = '먼저 베팅할 곳을 누르세요.'
+    return
+  }
+  const cap = Math.min((state.value.rules.maxBet ?? 0) - (myBetByKind.value[kind] ?? 0), auth.user?.balance ?? 0)
+  if (cap <= 0) {
+    error.value = '더 얹을 수 없습니다.'
+    return
+  }
+  await bet(kind, cap)
 }
 
 async function repeatLastBet() {
@@ -247,6 +307,42 @@ async function repeatLastBet() {
     // eslint-disable-next-line no-await-in-loop
     await bet(b.kind, b.amount)
     if (error.value) break
+  }
+}
+
+// 마지막 베팅 1건 되돌리기 — 서버가 배치 단위 로그에서 물리고 즉시 환불한다
+async function undoLastBet() {
+  if (state.value?.phase !== 'betting' || sending.value || myBetTotal.value === 0) return
+  sending.value = true
+  error.value = ''
+  try {
+    const res = await game.emitAck('bet:undo')
+    if (res.error) {
+      error.value = res.error
+    } else {
+      roundBets.value = roundBets.value.slice(0, -1)
+      sfx.chip()
+    }
+  } finally {
+    sending.value = false
+  }
+}
+
+// 이번 라운드 내 베팅 전체 취소 — 총액 즉시 환불
+async function clearMyBets() {
+  if (state.value?.phase !== 'betting' || sending.value || myBetTotal.value === 0) return
+  sending.value = true
+  error.value = ''
+  try {
+    const res = await game.emitAck('bet:clear')
+    if (res.error) {
+      error.value = res.error
+    } else {
+      roundBets.value = []
+      sfx.chipStack()
+    }
+  } finally {
+    sending.value = false
   }
 }
 </script>
@@ -261,6 +357,9 @@ async function repeatLastBet() {
       <span class="rounded-full bg-emerald-800 px-2 py-0.5 text-xs">{{ PHASE_LABELS[state.phase] }}</span>
       <span class="text-xs text-amber-500/80">바카라 · 뱅커 0.95:1</span>
       <span class="text-xs text-emerald-400">👥 {{ state.players.length }}</span>
+      <button class="rounded-full border border-amber-500/40 px-2.5 py-0.5 text-xs font-bold text-amber-300 hover:bg-amber-500/10"
+        :title="usePixi ? '기존 화면으로 전환' : 'PixiJS(WebGL) 렌더링으로 전환'" @click="togglePixi">
+        {{ usePixi ? '🖼 기본 화면' : '✨ 그래픽 화면(베타)' }}</button>
       <button class="ml-auto text-sm text-emerald-300 hover:text-amber-300" @click="router.push('/')">로비로</button>
     </div>
 
@@ -268,7 +367,24 @@ async function repeatLastBet() {
 
     <!-- 카드 -->
     <div class="relative"><FloatingText ref="floating" /></div>
-    <section class="grid grid-cols-2 gap-3">
+
+    <!-- 그래픽(Pixi) 모드: 캔버스가 펠트/카드/승자 표시를 그린다. 텍스트 병기는 아래 공통 유지 -->
+    <section v-if="usePixi" class="pixi-bac-frame game-surface relative overflow-hidden rounded-2xl border border-emerald-800 shadow-2xl">
+      <BaccaratPixi :get-state="() => state" :subscribe="game.onState"
+        :get-player-cards="() => revealedPlayer" :get-banker-cards="() => revealedBanker" />
+    </section>
+    <!-- 접근성/보조 표기(픽시 모드): 공개된 만큼만 문자로 병기 -->
+    <p v-if="usePixi && (revealedPlayer.length || revealedBanker.length)" class="text-center font-mono text-xs tracking-wide" aria-live="polite">
+      <span class="text-sky-300">플레이어</span>
+      <span v-for="(card, i) in revealedPlayer" :key="'ppt' + i" class="ml-0.5 font-bold" :class="suitClass(card.code)">{{ cardText(card.code) }}</span>
+      <b v-if="playerCaughtUp && state.result" class="ml-1 text-sky-200">= {{ state.result.playerTotal }}</b>
+      <span class="mx-2 text-emerald-600">|</span>
+      <span class="text-red-300">뱅커</span>
+      <span v-for="(card, i) in revealedBanker" :key="'pbt' + i" class="ml-0.5 font-bold" :class="suitClass(card.code)">{{ cardText(card.code) }}</span>
+      <b v-if="bankerCaughtUp && state.result" class="ml-1 text-red-200">= {{ state.result.bankerTotal }}</b>
+    </p>
+
+    <section v-if="!usePixi" class="grid grid-cols-2 gap-3">
       <div class="rounded-2xl border border-sky-500/30 bg-emerald-900/50 p-4 text-center"
         :class="state.phase === 'result' && state.result?.outcome === 'player' ? 'fx-glow-win' : ''">
         <p class="text-xs font-bold text-sky-300">플레이어
@@ -304,28 +420,33 @@ async function repeatLastBet() {
       <span v-if="state.result.bankerPair" class="ml-2 text-sm text-red-300">B페어!</span>
     </p>
 
-    <!-- 히스토리 -->
+    <!-- 히스토리: 원매(구슬) + 중국점(빅로드·빅아이·소로·커크로치) -->
     <div class="flex flex-wrap gap-1">
       <span v-for="(h, i) in state.history" :key="i" class="h-4 w-4 rounded-full" :class="BEAD[h]" />
     </div>
+    <BaccaratRoads :history="state.history" />
 
     <!-- 베팅 -->
-    <section class="rounded-2xl border border-emerald-800 bg-emerald-900/50 p-4">
+    <section class="game-surface rounded-2xl border border-emerald-800 bg-emerald-900/50 p-4">
       <div class="grid grid-cols-5 gap-2">
         <button v-for="b in KIND_BUTTONS" :key="b.kind" :disabled="state.phase !== 'betting' || sending"
           class="relative rounded-xl p-2 text-center text-white hover:opacity-80 disabled:opacity-40" :class="b.cls"
           @click="bet(b.kind)">
           <span class="block text-xs font-bold sm:text-sm">{{ b.label }}</span>
           <span class="block text-[10px] opacity-80">{{ b.pay }}</span>
-          <ChipStack v-if="myBetByKind[b.kind]" :amount="myBetByKind[b.kind]" :size="16" :max-chips="4" class="mt-1 mx-auto" />
+          <!-- 칩 자리를 항상 고정 높이로 확보해, 베팅 시 버튼이 커지며 아래 조작 행이 밀리는 현상(오클릭 원인)을 없앤다 -->
+          <div class="mt-1 flex h-8 items-end justify-center">
+            <ChipStack v-if="myBetByKind[b.kind]" :amount="myBetByKind[b.kind]" :size="22" :max-chips="4" />
+          </div>
         </button>
       </div>
-      <div class="mt-3 flex flex-wrap items-end gap-3">
+      <div class="mt-3 flex flex-wrap items-center gap-3">
         <ChipTray v-model="chipValue" :disabled="state.phase !== 'betting' || sending" />
-        <button v-if="state.phase === 'betting'" :disabled="!canRepeatLastBet || sending"
-          class="rounded-lg border border-amber-500/50 px-3 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-30"
-          :title="canRepeatLastBet ? `직전 베팅 재현 (총 ${lastRoundTotal.toLocaleString()}칩)` : '재현할 직전 베팅이 없거나 잔액이 부족합니다.'"
-          @click="repeatLastBet">↺ 직전 베팅</button>
+        <BetControls v-if="state.phase === 'betting'" :sending="sending"
+          :can-max="canBetMaxBac" :max-label="lastKind ? '마지막 베팅한 곳에 여유분 올인' : '먼저 베팅할 곳을 누르세요'"
+          :can-undo="myBetTotal > 0" :can-clear="myBetTotal > 0"
+          :can-repeat="canRepeatLastBet" :repeat-label="`직전 베팅 재현 (총 ${lastRoundTotal.toLocaleString()}칩)`"
+          @max="betMaxKind" @undo="undoLastBet" @clear="clearMyBets" @repeat="repeatLastBet" />
       </div>
       <p v-if="error" class="mt-2 text-sm text-red-400">{{ error }}</p>
       <div v-if="state.bets.length" class="mt-3 max-h-32 overflow-y-auto text-xs text-emerald-300">
@@ -343,3 +464,10 @@ async function repeatLastBet() {
     <TableHud :balance="auth.user?.balance ?? 0" :my-bet="myBetTotal" :status-label="PHASE_LABELS[state.phase]" :limit-label="limitLabel" />
   </div>
 </template>
+
+<style scoped>
+/* 그래픽(Pixi) 모드 캔버스 프레임 — 카드 두 구역이 담기는 고정 높이 */
+.pixi-bac-frame {
+  height: clamp(200px, 30vh, 280px);
+}
+</style>

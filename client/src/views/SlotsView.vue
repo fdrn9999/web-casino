@@ -1,11 +1,16 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { api } from '../lib/api'
+
+// PixiJS(WebGL) 렌더러 — 그래픽 모드를 켠 유저만 번들을 내려받도록 async import.
+const SlotsPixi = defineAsyncComponent(() => import('../pixi/SlotsPixi.vue'))
 import { useAuthStore } from '../stores/auth'
 import { useSound } from '../composables/useSound'
 import { connectSocket } from '../composables/useSocket'
 import FloatingText from '../components/FloatingText.vue'
 import JackpotCelebration from '../components/JackpotCelebration.vue'
+import JackpotWidget from '../components/JackpotWidget.vue'
+import SlotWinBurst from '../components/SlotWinBurst.vue'
 
 const auth = useAuthStore()
 const { sfx, playJackpot } = useSound()
@@ -50,11 +55,32 @@ function landingEase(t) {
 const state = ref(null)
 const bet = ref(0)
 const spinning = ref(false)
+// 그래픽(Pixi) 모드 — 전 게임 공통 토글(localStorage 'pixi')
+const usePixi = ref(new URLSearchParams(location.search).get('pixi') === '1' || localStorage.getItem('pixi') === '1')
+function togglePixi() {
+  usePixi.value = !usePixi.value
+  try {
+    localStorage.setItem('pixi', usePixi.value ? '1' : '0')
+  } catch {
+    // 저장 실패는 무시(사생활 모드 등)
+  }
+}
+// 씬이 매 프레임 읽어가는 릴 상태 스냅샷(리액티브 값의 게터)
+function getReelFrame() {
+  return {
+    strips: reelStrips.value,
+    y: reelY.value,
+    states: reelState.value,
+    suspense: suspense.value,
+    glow: glow.value,
+  }
+}
 const result = ref(null)
 const error = ref('')
 const autoSpin = ref(false)
 const floating = ref(null)
 const celebration = ref(null)
+const winBurst = ref(null)
 const glow = ref(false)
 let glowTimeout = null
 
@@ -286,8 +312,11 @@ async function doSpin() {
       playJackpot()
       celebration.value?.celebrate(res.jackpotAmount)
     } else if (res.payout > 0) {
-      sfx.win()
+      // 사소한 당첨도 요란하게 — 빠칭코풍 버스트 + 화려한 사운드.
+      const isBig = res.payout >= bet.value * 5
+      sfx.slotWin(isBig)
       glow.value = true
+      winBurst.value?.celebrate(res.payout, res.label || 'WIN', { big: isBig })
       floating.value?.show(`+${res.payout.toLocaleString()}칩`, 'win')
       glowTimeout = setTimeout(() => (glow.value = false), 3000)
     } else {
@@ -372,10 +401,23 @@ async function autoSpinLoop() {
 
 <template>
   <div v-if="state" class="mx-auto max-w-lg space-y-4">
-    <h1 class="text-xl font-bold text-amber-400">🎰 슬롯머신</h1>
+    <div class="flex items-center gap-2">
+      <h1 class="text-xl font-bold text-amber-400">🎰 슬롯머신</h1>
+      <button class="ml-auto rounded-full border border-amber-500/40 px-2.5 py-0.5 text-xs font-bold text-amber-300 hover:bg-amber-500/10"
+        :title="usePixi ? '기존 화면으로 전환' : 'PixiJS(WebGL) 렌더링으로 전환'" @click="togglePixi">
+        {{ usePixi ? '🖼 기본 화면' : '✨ 그래픽 화면(베타)' }}</button>
+    </div>
+
+    <!-- 프로그레시브 잭팟 — 로비뿐 아니라 슬롯 화면에도 항상 표시(스핀마다 실시간 상승) -->
+    <JackpotWidget />
 
     <div class="rounded-2xl border-4 border-amber-500/60 bg-emerald-900 p-6">
-      <div class="relative flex justify-center gap-3 rounded-xl" :class="glow ? 'fx-glow-win' : ''">
+      <!-- 그래픽(Pixi) 모드: 릴을 캔버스가 그린다(스핀 물리·사운드는 동일한 뷰 로직) -->
+      <div v-if="usePixi" class="relative overflow-hidden rounded-xl" style="height: 128px">
+        <FloatingText ref="floating" />
+        <SlotsPixi :get-frame="getReelFrame" />
+      </div>
+      <div v-else class="relative flex justify-center gap-3 rounded-xl" :class="glow ? 'fx-glow-win' : ''">
         <FloatingText ref="floating" />
         <div v-for="(strip, i) in reelStrips" :key="i" :ref="(el) => setReelEl(el, i)"
           class="relative h-24 w-20 overflow-hidden rounded-xl bg-emerald-950 shadow-inner sm:h-28 sm:w-24"
@@ -435,5 +477,6 @@ async function autoSpinLoop() {
     </details>
 
     <JackpotCelebration ref="celebration" />
+    <SlotWinBurst ref="winBurst" />
   </div>
 </template>

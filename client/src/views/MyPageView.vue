@@ -6,7 +6,8 @@ import { useAuthStore } from '../stores/auth'
 const auth = useAuthStore()
 
 const GAME_LABELS = { slots: '슬롯', blackjack: '블랙잭', roulette: '룰렛', baccarat: '바카라' }
-const GAME_ICONS = { slots: '🎰', blackjack: '🃏', roulette: '🎡', baccarat: '🂡' }
+// 바카라는 로비와 동일한 🀄 사용 — 🂡(플레잉카드 블록)는 Windows 폰트에 없어 깨져 보인다
+const GAME_ICONS = { slots: '🎰', blackjack: '🃏', roulette: '🎡', baccarat: '🀄' }
 const RESULT_LABELS = { win: '승', lose: '패', push: '무' }
 const PAGE_SIZE = 20
 
